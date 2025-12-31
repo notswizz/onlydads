@@ -79,6 +79,9 @@ export default async function handler(req, res) {
 }
 
 async function generateImage(referenceImages, prompt, apiKey, res) {
+  // Enhance prompt to preserve the female model's appearance
+  const enhancedPrompt = `${prompt} IMPORTANT: Keep the female model's face, body, hair, and overall appearance exactly identical to the original image. Do not change her facial features, skin tone, hair color, hairstyle, or body proportions. Preserve her exact likeness.`;
+  
   const response = await fetch('https://api.replicate.com/v1/models/bytedance/seedream-4/predictions', {
     method: 'POST',
     headers: {
@@ -88,7 +91,7 @@ async function generateImage(referenceImages, prompt, apiKey, res) {
     body: JSON.stringify({
       input: {
         image_input: referenceImages,
-        prompt: prompt,
+        prompt: enhancedPrompt,
         size: "2K",
         width: 2048,
         height: 2048,
