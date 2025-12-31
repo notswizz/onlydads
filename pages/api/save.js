@@ -64,7 +64,8 @@ export default async function handler(req, res) {
     dadType,
     title,
     model,
-    type = 'image' 
+    type = 'image',
+    sourceImageId = null, // For videos: the _id of the image this video was made from
   } = req.body;
 
   if (!generatedImage) {
@@ -92,6 +93,8 @@ export default async function handler(req, res) {
       createdAt: new Date(),
       likes: 0,
       voteScore: 0,
+      // For videos: link to the source image
+      ...(type === 'video' && sourceImageId ? { sourceImageId } : {}),
       // Store user info
       uploadedBy: {
         id: session.user.id,

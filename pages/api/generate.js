@@ -221,6 +221,7 @@ async function generateVideo(referenceImages, prompt, apiKey, res, numFrames = 8
         resolution: "480p",
         sample_shift: 12,
         frames_per_second: 16,
+        interpolate_output: true,
         enable_safety_checker: false,
       },
     }),

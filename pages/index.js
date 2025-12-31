@@ -104,21 +104,22 @@ export default function Home() {
   
   // Lightbox for viewing images/videos
   const [lightboxItem, setLightboxItem] = useState(null);
+  const [lightboxVideos, setLightboxVideos] = useState([]);
+  const [lightboxVideosLoading, setLightboxVideosLoading] = useState(false);
+  const [selectedVideo, setSelectedVideo] = useState(null); // Currently playing video in lightbox
   
   // Model search
   const [modelSearch, setModelSearch] = useState('');
   const [showModelsModal, setShowModelsModal] = useState(false);
   
-  // Gallery filters
-  const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'image' | 'video'
+  // Gallery filters (images only now - videos are shown in lightbox)
   const [sortBy, setSortBy] = useState('top'); // 'top' | 'new'
   
-  // Homepage feed with infinite scroll
+  // Homepage feed with infinite scroll (images only)
   const [feed, setFeed] = useState([]);
   const [feedLoading, setFeedLoading] = useState(true);
   const [feedLoadingMore, setFeedLoadingMore] = useState(false);
   const [feedSort, setFeedSort] = useState('top');
-  const [feedType, setFeedType] = useState('all');
   const [feedPage, setFeedPage] = useState(1);
   const [feedHasMore, setFeedHasMore] = useState(true);
   const loadMoreRef = useRef(null);
@@ -137,8 +138,8 @@ export default function Home() {
     }
   }, []);
 
-  // Fetch homepage feed (all content) with pagination
-  const fetchFeed = useCallback(async (sort = 'top', type = 'all', page = 1, append = false) => {
+  // Fetch homepage feed (images only) with pagination
+  const fetchFeed = useCallback(async (sort = 'top', page = 1, append = false) => {
     try {
       if (page === 1) {
         setFeedLoading(true);
@@ -146,10 +147,8 @@ export default function Home() {
         setFeedLoadingMore(true);
       }
       
-      let url = `/api/gallery?limit=20&sort=${sort}&page=${page}`;
-      if (type !== 'all') {
-        url += `&type=${type}`;
-      }
+      // Always fetch images only - videos are accessed via lightbox
+      const url = `/api/gallery?limit=20&sort=${sort}&page=${page}&type=image`;
       const res = await fetch(url);
       const data = await res.json();
       
@@ -159,7 +158,7 @@ export default function Home() {
         } else {
           setFeed(data.creations);
         }
-        setFeedHasMore(data.pagination.hasMore);
+        setFeedHasMore(data.pagination?.hasMore || false);
         setFeedPage(page);
       }
     } catch (err) {
@@ -173,18 +172,15 @@ export default function Home() {
   // Load more feed items
   const loadMoreFeed = useCallback(() => {
     if (!feedLoadingMore && feedHasMore) {
-      fetchFeed(feedSort, feedType, feedPage + 1, true);
+      fetchFeed(feedSort, feedPage + 1, true);
     }
-  }, [feedLoadingMore, feedHasMore, feedSort, feedType, feedPage, fetchFeed]);
+  }, [feedLoadingMore, feedHasMore, feedSort, feedPage, fetchFeed]);
 
-  // Fetch gallery for a specific model
-  const fetchModelGallery = useCallback(async (modelName, type = 'all', sort = 'top') => {
+  // Fetch gallery for a specific model (images only)
+  const fetchModelGallery = useCallback(async (modelName, sort = 'top') => {
     try {
       setGalleryLoading(true);
-      let url = `/api/gallery?model=${encodeURIComponent(modelName)}&limit=100&sort=${sort}`;
-      if (type !== 'all') {
-        url += `&type=${type}`;
-      }
+      const url = `/api/gallery?model=${encodeURIComponent(modelName)}&limit=100&sort=${sort}&type=image`;
       const res = await fetch(url);
       const data = await res.json();
       if (data.success) setGallery(data.creations);
@@ -221,17 +217,15 @@ export default function Home() {
   const openModelDetail = (model) => {
     setSelectedModel(model);
     setView('model-detail');
-    setTypeFilter('all');
     setSortBy('top');
-    fetchModelGallery(model.name, 'all', 'top');
+    fetchModelGallery(model.name, 'top');
   };
   
-  // Refetch gallery when filters change
-  const handleFilterChange = (newType, newSort) => {
+  // Refetch gallery when sort changes
+  const handleSortChange = (newSort) => {
     if (selectedModel) {
-      setTypeFilter(newType);
       setSortBy(newSort);
-      fetchModelGallery(selectedModel.name, newType, newSort);
+      fetchModelGallery(selectedModel.name, newSort);
     }
   };
 
@@ -248,17 +242,45 @@ export default function Home() {
     fetchModels();
     setFeedPage(1);
     setFeedHasMore(true);
-    fetchFeed(feedSort, feedType, 1, false);
+    fetchFeed(feedSort, 1, false);
     setModelSearch('');
   };
 
   // Lightbox functions
-  const openLightbox = (item) => {
+  const openLightbox = async (item) => {
     setLightboxItem(item);
+    setSelectedVideo(null);
+    setLightboxVideos([]);
+    
+    // Fetch videos for this image
+    if (item.type !== 'video') {
+      setLightboxVideosLoading(true);
+      try {
+        const res = await fetch(`/api/videos-for-image?imageId=${item._id}`);
+        const data = await res.json();
+        if (data.success) {
+          setLightboxVideos(data.videos);
+        }
+      } catch (err) {
+        console.error('Failed to fetch videos:', err);
+      } finally {
+        setLightboxVideosLoading(false);
+      }
+    }
   };
 
   const closeLightbox = () => {
     setLightboxItem(null);
+    setLightboxVideos([]);
+    setSelectedVideo(null);
+  };
+  
+  const selectLightboxVideo = (video) => {
+    setSelectedVideo(video);
+  };
+  
+  const backToImage = () => {
+    setSelectedVideo(null);
   };
 
   // Filter models by search
@@ -267,12 +289,11 @@ export default function Home() {
   );
   
   // Handle feed filter change (reset to page 1)
-  const handleFeedFilterChange = (newSort, newType) => {
+  const handleFeedSortChange = (newSort) => {
     setFeedSort(newSort);
-    setFeedType(newType);
     setFeedPage(1);
     setFeedHasMore(true);
-    fetchFeed(newSort, newType, 1, false);
+    fetchFeed(newSort, 1, false);
   };
 
   // Intersection observer for infinite scroll
@@ -426,7 +447,7 @@ export default function Home() {
       const data = await res.json();
       
       if (data.success) {
-        // Save video to gallery
+        // Save video to gallery with sourceImageId
         const saveRes = await fetch('/api/save', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -437,6 +458,7 @@ export default function Home() {
             dadType: 'OnlyDad',
             model: sourceItem.model,
             type: 'video',
+            sourceImageId: sourceItem._id, // Link to source image
           }),
         });
         const saveData = await saveRes.json();
@@ -448,12 +470,7 @@ export default function Home() {
               ? { ...job, status: 'completed', result: saveData.creation }
               : job
           ));
-          // Add to feed if on home
-          setFeed(prev => [saveData.creation, ...prev]);
-          // Add to gallery if viewing that model
-          if (selectedModel?.name === sourceItem.model) {
-            setGallery(prev => [saveData.creation, ...prev]);
-          }
+          // Note: Videos no longer appear in main feed, they're accessed via lightbox
         } else {
           throw new Error('Failed to save video');
         }
@@ -643,38 +660,18 @@ export default function Home() {
         {/* Homepage Feed */}
         {view === 'models' && (
           <section className="feed-section">
-            {/* Filter & Sort Controls */}
+            {/* Sort Controls */}
             <div className="gallery-controls">
-              <div className="filter-tabs">
-                <button 
-                  className={`filter-tab ${feedType === 'all' ? 'active' : ''}`}
-                  onClick={() => handleFeedFilterChange(feedSort, 'all')}
-                >
-                  All
-                </button>
-                <button 
-                  className={`filter-tab ${feedType === 'image' ? 'active' : ''}`}
-                  onClick={() => handleFeedFilterChange(feedSort, 'image')}
-                >
-                  📷 Photos
-                </button>
-                <button 
-                  className={`filter-tab ${feedType === 'video' ? 'active' : ''}`}
-                  onClick={() => handleFeedFilterChange(feedSort, 'video')}
-                >
-                  🎬 Videos
-                </button>
-              </div>
               <div className="sort-pills">
                 <button 
                   className={`sort-pill ${feedSort === 'top' ? 'active' : ''}`}
-                  onClick={() => handleFeedFilterChange('top', feedType)}
+                  onClick={() => handleFeedSortChange('top')}
                 >
                   🔥 Top
                 </button>
                 <button 
                   className={`sort-pill ${feedSort === 'new' ? 'active' : ''}`}
-                  onClick={() => handleFeedFilterChange('new', feedType)}
+                  onClick={() => handleFeedSortChange('new')}
                 >
                   ✨ New
                 </button>
@@ -700,9 +697,9 @@ export default function Home() {
             ) : (
               <div className="gallery-grid">
                 {feed.map((item) => (
-                  <div key={item._id} className={`gallery-item ${item.type === 'video' ? 'video-item' : ''}`}>
+                  <div key={item._id} className="gallery-item">
                     {/* Model name badge */}
-                    <span className="model-badge" onClick={() => openModelDetail({ name: item.model, count: 0 })}>
+                    <span className="model-badge" onClick={(e) => { e.stopPropagation(); openModelDetail({ name: item.model, count: 0 }); }}>
                       {item.model}
                     </span>
                     
@@ -717,39 +714,18 @@ export default function Home() {
                       </button>
                     )}
                     
-                    {item.type === 'video' ? (
-                      <video 
-                        src={item.generatedImage} 
-                        className="gallery-img clickable" 
-                        loop 
-                        muted 
-                        playsInline
-                        onClick={() => openLightbox(item)}
-                        onMouseEnter={(e) => e.target.play()}
-                        onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 0; }}
-                      />
-                    ) : (
-                      <>
-                        <img 
-                          src={item.generatedImage} 
-                          alt="" 
-                          className="gallery-img clickable" 
-                          onClick={() => openLightbox(item)}
-                        />
-                        <button 
-                          className="gallery-video-btn"
-                          onClick={(e) => { e.stopPropagation(); openVideoModal(item); }}
-                          title="Create video"
-                        >
-                          ▶
-                        </button>
-                      </>
-                    )}
+                    <img 
+                      src={item.generatedImage} 
+                      alt="" 
+                      className="gallery-img clickable" 
+                      onClick={() => openLightbox(item)}
+                    />
+                    
                     {/* Vote buttons */}
                     <div className="vote-controls">
                       <button 
                         className={`vote-btn upvote ${item.userVote === 'up' ? 'active' : ''}`}
-                        onClick={() => handleVote(item._id, 'up')}
+                        onClick={(e) => { e.stopPropagation(); handleVote(item._id, 'up'); }}
                       >
                         ▲
                       </button>
@@ -758,7 +734,7 @@ export default function Home() {
                       </span>
                       <button 
                         className={`vote-btn downvote ${item.userVote === 'down' ? 'active' : ''}`}
-                        onClick={() => handleVote(item._id, 'down')}
+                        onClick={(e) => { e.stopPropagation(); handleVote(item._id, 'down'); }}
                       >
                         ▼
                       </button>
@@ -786,38 +762,18 @@ export default function Home() {
               <span className="photo-count">{selectedModel.count} items</span>
             </div>
             
-            {/* Filter & Sort Controls */}
+            {/* Sort Controls */}
             <div className="gallery-controls">
-              <div className="filter-tabs">
-                <button 
-                  className={`filter-tab ${typeFilter === 'all' ? 'active' : ''}`}
-                  onClick={() => handleFilterChange('all', sortBy)}
-                >
-                  All
-                </button>
-                <button 
-                  className={`filter-tab ${typeFilter === 'image' ? 'active' : ''}`}
-                  onClick={() => handleFilterChange('image', sortBy)}
-                >
-                  📷 Photos
-                </button>
-                <button 
-                  className={`filter-tab ${typeFilter === 'video' ? 'active' : ''}`}
-                  onClick={() => handleFilterChange('video', sortBy)}
-                >
-                  🎬 Videos
-                </button>
-              </div>
               <div className="sort-pills">
                 <button 
                   className={`sort-pill ${sortBy === 'top' ? 'active' : ''}`}
-                  onClick={() => handleFilterChange(typeFilter, 'top')}
+                  onClick={() => handleSortChange('top')}
                 >
                   🔥 Top
                 </button>
                 <button 
                   className={`sort-pill ${sortBy === 'new' ? 'active' : ''}`}
-                  onClick={() => handleFilterChange(typeFilter, 'new')}
+                  onClick={() => handleSortChange('new')}
                 >
                   ✨ New
                 </button>
@@ -829,7 +785,7 @@ export default function Home() {
             ) : (
               <div className="gallery-grid">
                 {gallery.map((item) => (
-                  <div key={item._id} className={`gallery-item ${item.type === 'video' ? 'video-item' : ''}`}>
+                  <div key={item._id} className="gallery-item">
                     {/* Delete button */}
                     {session && (
                       <button 
@@ -841,39 +797,18 @@ export default function Home() {
                       </button>
                     )}
                     
-                    {item.type === 'video' ? (
-                      <video 
-                        src={item.generatedImage} 
-                        className="gallery-img clickable" 
-                        loop 
-                        muted 
-                        playsInline
-                        onClick={() => openLightbox(item)}
-                        onMouseEnter={(e) => e.target.play()}
-                        onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 0; }}
-                      />
-                    ) : (
-                      <>
-                        <img 
-                          src={item.generatedImage} 
-                          alt="" 
-                          className="gallery-img clickable" 
-                          onClick={() => openLightbox(item)}
-                        />
-                        <button 
-                          className="gallery-video-btn"
-                          onClick={(e) => { e.stopPropagation(); openVideoModal(item); }}
-                          title="Create video"
-                        >
-                          ▶
-                        </button>
-                      </>
-                    )}
+                    <img 
+                      src={item.generatedImage} 
+                      alt="" 
+                      className="gallery-img clickable" 
+                      onClick={() => openLightbox(item)}
+                    />
+                    
                     {/* Vote buttons */}
                     <div className="vote-controls">
                       <button 
                         className={`vote-btn upvote ${item.userVote === 'up' ? 'active' : ''}`}
-                        onClick={() => handleVote(item._id, 'up')}
+                        onClick={(e) => { e.stopPropagation(); handleVote(item._id, 'up'); }}
                       >
                         ▲
                       </button>
@@ -882,7 +817,7 @@ export default function Home() {
                       </span>
                       <button 
                         className={`vote-btn downvote ${item.userVote === 'down' ? 'active' : ''}`}
-                        onClick={() => handleVote(item._id, 'down')}
+                        onClick={(e) => { e.stopPropagation(); handleVote(item._id, 'down'); }}
                       >
                         ▼
                       </button>
@@ -1091,38 +1026,153 @@ export default function Home() {
       {lightboxItem && (
         <div className="lightbox-overlay" onClick={closeLightbox}>
           <button className="lightbox-close" onClick={closeLightbox}>✕</button>
-          <div className="lightbox-content" onClick={(e) => e.stopPropagation()}>
-            {lightboxItem.type === 'video' ? (
-              <video 
-                src={lightboxItem.generatedImage} 
-                className="lightbox-media"
-                controls 
-                autoPlay 
-                loop
-              />
-            ) : (
-              <img 
-                src={lightboxItem.generatedImage} 
-                alt="" 
-                className="lightbox-media"
-              />
-            )}
-            <div className="lightbox-info">
-              <span className="lightbox-model" onClick={() => { closeLightbox(); openModelDetail({ name: lightboxItem.model, count: 0 }); }}>
+          
+          <div className="lightbox-container" onClick={(e) => e.stopPropagation()}>
+            {/* Left side - Main media */}
+            <div className="lightbox-main">
+              {selectedVideo ? (
+                <>
+                  <button className="lightbox-back" onClick={backToImage}>
+                    ← Back
+                  </button>
+                  <video 
+                    src={selectedVideo.generatedImage} 
+                    className="lightbox-media"
+                    controls 
+                    autoPlay 
+                    loop
+                  />
+                </>
+              ) : (
+                <img 
+                  src={lightboxItem.generatedImage} 
+                  alt="" 
+                  className="lightbox-media"
+                />
+              )}
+              
+              {/* Model badge on image */}
+              <div className="lightbox-model-badge" onClick={() => { closeLightbox(); openModelDetail({ name: lightboxItem.model, count: 0 }); }}>
                 {lightboxItem.model}
-              </span>
-              <div className="lightbox-actions">
-                <a href={lightboxItem.generatedImage} download className="btn secondary">
-                  Download
-                </a>
-                {lightboxItem.type !== 'video' && (
+              </div>
+            </div>
+            
+            {/* Right side - Videos panel */}
+            <div className="lightbox-sidebar">
+              <div className="lightbox-sidebar-header">
+                <h3>{selectedVideo ? '🎬 Now Playing' : '🎬 Videos'}</h3>
+                {lightboxVideosLoading && <span className="pulse-dot"></span>}
+                {!lightboxVideosLoading && !selectedVideo && (
+                  <span className="video-badge">{lightboxVideos.length}</span>
+                )}
+              </div>
+              
+              {/* Video voting when a video is selected */}
+              {selectedVideo && (
+                <div className="video-vote-section">
+                  <div className="video-vote-controls">
+                    <button 
+                      className={`video-vote-btn upvote ${selectedVideo.userVote === 'up' ? 'active' : ''}`}
+                      onClick={() => {
+                        handleVote(selectedVideo._id, 'up');
+                        // Update local state
+                        setLightboxVideos(prev => prev.map(v => 
+                          v._id === selectedVideo._id 
+                            ? { ...v, userVote: v.userVote === 'up' ? null : 'up', voteScore: v.voteScore + (v.userVote === 'up' ? -1 : v.userVote === 'down' ? 2 : 1) }
+                            : v
+                        ));
+                        setSelectedVideo(prev => prev ? {
+                          ...prev,
+                          userVote: prev.userVote === 'up' ? null : 'up',
+                          voteScore: prev.voteScore + (prev.userVote === 'up' ? -1 : prev.userVote === 'down' ? 2 : 1)
+                        } : null);
+                      }}
+                    >
+                      ▲
+                    </button>
+                    <span className={`video-vote-score ${selectedVideo.voteScore > 0 ? 'positive' : selectedVideo.voteScore < 0 ? 'negative' : ''}`}>
+                      {selectedVideo.voteScore || 0}
+                    </span>
+                    <button 
+                      className={`video-vote-btn downvote ${selectedVideo.userVote === 'down' ? 'active' : ''}`}
+                      onClick={() => {
+                        handleVote(selectedVideo._id, 'down');
+                        // Update local state
+                        setLightboxVideos(prev => prev.map(v => 
+                          v._id === selectedVideo._id 
+                            ? { ...v, userVote: v.userVote === 'down' ? null : 'down', voteScore: v.voteScore + (v.userVote === 'down' ? 1 : v.userVote === 'up' ? -2 : -1) }
+                            : v
+                        ));
+                        setSelectedVideo(prev => prev ? {
+                          ...prev,
+                          userVote: prev.userVote === 'down' ? null : 'down',
+                          voteScore: prev.voteScore + (prev.userVote === 'down' ? 1 : prev.userVote === 'up' ? -2 : -1)
+                        } : null);
+                      }}
+                    >
+                      ▼
+                    </button>
+                  </div>
+                  <p className="video-prompt-preview">{selectedVideo.prompt}</p>
+                </div>
+              )}
+              
+              <div className="lightbox-videos-grid">
+                {lightboxVideos.length === 0 && !lightboxVideosLoading ? (
+                  <div className="no-videos-state">
+                    <span className="no-videos-icon">🎬</span>
+                    <p>No videos yet</p>
+                  </div>
+                ) : (
+                  lightboxVideos.map(video => (
+                    <div 
+                      key={video._id} 
+                      className={`video-card ${selectedVideo?._id === video._id ? 'active' : ''}`}
+                      onClick={() => selectLightboxVideo(video)}
+                    >
+                      <video 
+                        src={video.generatedImage} 
+                        muted 
+                        playsInline
+                        onMouseEnter={(e) => e.target.play()}
+                        onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 0; }}
+                      />
+                      <div className="video-card-overlay">
+                        <span className="play-icon">▶</span>
+                      </div>
+                      {/* Vote score badge */}
+                      <span className={`video-score-badge ${video.voteScore > 0 ? 'positive' : video.voteScore < 0 ? 'negative' : ''}`}>
+                        {video.voteScore || 0}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+              
+              {/* Action buttons */}
+              <div className="lightbox-actions-bar">
+                {!selectedVideo ? (
                   <button 
-                    className="btn primary" 
-                    onClick={() => { closeLightbox(); openVideoModal(lightboxItem); }}
+                    className="action-btn create-video"
+                    onClick={() => openVideoModal(lightboxItem)}
                   >
-                    ✦ Make Video
+                    <span>✦</span> Create Video
+                  </button>
+                ) : (
+                  <button 
+                    className="action-btn create-video"
+                    onClick={backToImage}
+                  >
+                    <span>←</span> Back to Image
                   </button>
                 )}
+                <a 
+                  href={selectedVideo ? selectedVideo.generatedImage : lightboxItem.generatedImage} 
+                  download 
+                  className="action-btn download"
+                >
+                  <span>↓</span> Download
+                </a>
               </div>
             </div>
           </div>
