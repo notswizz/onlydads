@@ -9,13 +9,51 @@ const isIOS = () => {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 };
 
-// Handle download - opens in new tab on iOS for easy saving
-const handleDownload = (url, isVideo = false) => {
+// Check if Web Share API is available
+const canShare = () => {
+  if (typeof window === 'undefined') return false;
+  return !!navigator.share;
+};
+
+// Handle share using native share sheet (works great on iOS)
+const handleShare = async (url, isVideo = false) => {
+  try {
+    // Fetch the file
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const file = new File(
+      [blob], 
+      isVideo ? 'onlydads-video.mp4' : 'onlydads-image.jpg', 
+      { type: isVideo ? 'video/mp4' : 'image/jpeg' }
+    );
+    
+    // Use Web Share API
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title: 'OnlyDads',
+        text: isVideo ? 'Check out this video!' : 'Check out this image!',
+      });
+      return true;
+    }
+  } catch (err) {
+    console.log('Share failed:', err);
+  }
+  return false;
+};
+
+// Handle download - uses share on iOS, direct download on desktop
+const handleDownload = async (url, isVideo = false) => {
+  // On iOS, try native share first (allows saving to Photos)
+  if (isIOS() && canShare()) {
+    const shared = await handleShare(url, isVideo);
+    if (shared) return;
+  }
+  
+  // Fallback: open in new tab on iOS, download on desktop
   if (isIOS()) {
-    // On iOS, open in new tab - user can then long-press to save
     window.open(url, '_blank');
   } else {
-    // On other devices, trigger download
     const link = document.createElement('a');
     link.href = url;
     link.download = isVideo ? 'onlydads-video.mp4' : 'onlydads-image.jpg';
@@ -1185,7 +1223,7 @@ export default function Home() {
               {/* iOS save hint for videos */}
               {selectedVideo && isIOS() && (
                 <div className="ios-save-hint">
-                  📱 Tap "Open to Save" then long-press video to save to Photos
+                  📱 Tap "Save to Photos" to save video directly
                 </div>
               )}
               
@@ -1213,7 +1251,7 @@ export default function Home() {
                     !!selectedVideo
                   )}
                 >
-                  <span>↓</span> {isIOS() && selectedVideo ? 'Open to Save' : 'Download'}
+                  <span>{isIOS() ? '📤' : '↓'}</span> {isIOS() ? 'Save to Photos' : 'Download'}
                 </button>
               </div>
             </div>
