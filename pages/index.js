@@ -681,20 +681,21 @@ export default function Home() {
               </div>
             </div>
             
-            {feedLoading ? (
+            {!session ? (
+              <div className="empty-state">
+                <p>Sign in to view your personal gallery</p>
+                <button className="btn primary" onClick={() => signIn('google')}>
+                  ✦ Sign In with Google
+                </button>
+              </div>
+            ) : feedLoading ? (
               <p className="loading">loading...</p>
             ) : feed.length === 0 ? (
               <div className="empty-state">
-                <p>No content yet</p>
-                {session ? (
-                  <button className="btn primary" onClick={openUpload}>
-                    Upload your first creation
-                  </button>
-                ) : (
-                  <button className="btn primary" onClick={() => signIn('google')}>
-                    Sign in to upload
-                  </button>
-                )}
+                <p>Your gallery is empty</p>
+                <button className="btn primary" onClick={openUpload}>
+                  Upload your first creation
+                </button>
               </div>
             ) : (
               <div className="gallery-grid">

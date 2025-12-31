@@ -8,6 +8,17 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Require authentication - each user sees only their own gallery
+    const session = await getServerSession(req, res, authOptions);
+    if (!session?.user?.email) {
+      return res.status(401).json({ 
+        error: 'You must be signed in to view your gallery',
+        creations: [],
+        pagination: { page: 1, limit: 20, total: 0, totalPages: 0, hasMore: false }
+      });
+    }
+
+    const userEmail = session.user.email;
     const collection = await getCollection('creations');
     const votesCollection = await getCollection('votes');
     
@@ -17,9 +28,10 @@ export default async function handler(req, res) {
     const skip = (page - 1) * limit;
     const { model, sort, type } = req.query;
 
-    // Build filter - always require model to exist
+    // Build filter - only show this user's content
     const filter = {
-      model: { $exists: true, $ne: null, $ne: '' }
+      model: { $exists: true, $ne: null, $ne: '' },
+      'uploadedBy.email': userEmail,
     };
     if (model) {
       filter.model = model;
@@ -44,10 +56,9 @@ export default async function handler(req, res) {
     // Get total count for pagination
     const total = await collection.countDocuments(filter);
 
-    // Check if user is logged in to get their votes
+    // Get user's votes for these creations
     let userVotes = {};
-    const session = await getServerSession(req, res, authOptions);
-    if (session?.user?.id) {
+    if (session.user?.id) {
       const creationIds = creations.map(c => c._id.toString());
       const votes = await votesCollection.find({
         creationId: { $in: creationIds },

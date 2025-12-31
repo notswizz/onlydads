@@ -1,3 +1,5 @@
+import { getServerSession } from 'next-auth';
+import { authOptions } from './auth/[...nextauth]';
 import { getCollection } from '../../lib/mongodb';
 
 export default async function handler(req, res) {
@@ -6,11 +8,24 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Require authentication - each user sees only their own models
+    const session = await getServerSession(req, res, authOptions);
+    if (!session?.user?.email) {
+      return res.status(200).json({ 
+        success: true,
+        models: [],
+      });
+    }
+
+    const userEmail = session.user.email;
     const collection = await getCollection('creations');
     const { search } = req.query;
 
-    // Build match filter
-    const matchFilter = { model: { $exists: true, $ne: null, $ne: '' } };
+    // Build match filter - only show this user's content
+    const matchFilter = { 
+      model: { $exists: true, $ne: null, $ne: '' },
+      'uploadedBy.email': userEmail,
+    };
     if (search) {
       matchFilter.model = { $regex: search, $options: 'i' };
     }
