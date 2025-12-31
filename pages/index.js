@@ -107,6 +107,7 @@ export default function Home() {
   
   // Model search
   const [modelSearch, setModelSearch] = useState('');
+  const [showModelsModal, setShowModelsModal] = useState(false);
   
   // Gallery filters
   const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'image' | 'video'
@@ -596,7 +597,10 @@ export default function Home() {
     <>
       <Head>
         <title>OnlyDads 👴</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+        <meta name="theme-color" content="#09090b" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👴</text></svg>" />
       </Head>
 
@@ -638,83 +642,41 @@ export default function Home() {
 
         {/* Homepage Feed */}
         {view === 'models' && (
-          <div className="feed-layout">
-            {/* Models Sidebar */}
-            <aside className="models-sidebar">
-              <h3>Models</h3>
-              
-              {/* Search Bar */}
-              <div className="sidebar-search">
-                <input
-                  type="text"
-                  value={modelSearch}
-                  onChange={(e) => setModelSearch(e.target.value)}
-                  placeholder="Search models..."
-                  className="search-input"
-                />
-              </div>
-              
-              {modelsLoading ? (
-                <p className="sidebar-loading">loading...</p>
-              ) : filteredModels.length === 0 ? (
-                <p className="sidebar-empty">{modelSearch ? 'No matches' : 'No models yet'}</p>
-              ) : (
-                <ul className="models-list">
-                  {filteredModels.map((model) => (
-                    <li 
-                      key={model.name}
-                      className="model-list-item"
-                      onClick={() => openModelDetail(model)}
-                    >
-                      <img src={model.thumbnail} alt="" className="model-list-thumb" />
-                      <div className="model-list-info">
-                        <span className="model-list-name">{model.name}</span>
-                        <span className="model-list-count">{model.count} {model.count === 1 ? 'post' : 'posts'}</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </aside>
-            
-            {/* Main Feed */}
-            <section className="feed-section">
-              {/* Filter & Sort Controls */}
-              <div className="gallery-controls">
-              <div className="filter-group">
-                <span>Type</span>
+          <section className="feed-section">
+            {/* Filter & Sort Controls */}
+            <div className="gallery-controls">
+              <div className="filter-tabs">
                 <button 
-                  className={`filter-btn ${feedType === 'all' ? 'active' : ''}`}
+                  className={`filter-tab ${feedType === 'all' ? 'active' : ''}`}
                   onClick={() => handleFeedFilterChange(feedSort, 'all')}
                 >
                   All
                 </button>
                 <button 
-                  className={`filter-btn ${feedType === 'image' ? 'active' : ''}`}
+                  className={`filter-tab ${feedType === 'image' ? 'active' : ''}`}
                   onClick={() => handleFeedFilterChange(feedSort, 'image')}
                 >
-                  Images
+                  📷 Photos
                 </button>
                 <button 
-                  className={`filter-btn ${feedType === 'video' ? 'active' : ''}`}
+                  className={`filter-tab ${feedType === 'video' ? 'active' : ''}`}
                   onClick={() => handleFeedFilterChange(feedSort, 'video')}
                 >
-                  Videos
+                  🎬 Videos
                 </button>
               </div>
-              <div className="filter-group">
-                <span>Sort</span>
+              <div className="sort-pills">
                 <button 
-                  className={`filter-btn ${feedSort === 'top' ? 'active' : ''}`}
+                  className={`sort-pill ${feedSort === 'top' ? 'active' : ''}`}
                   onClick={() => handleFeedFilterChange('top', feedType)}
                 >
-                  Top
+                  🔥 Top
                 </button>
                 <button 
-                  className={`filter-btn ${feedSort === 'new' ? 'active' : ''}`}
+                  className={`sort-pill ${feedSort === 'new' ? 'active' : ''}`}
                   onClick={() => handleFeedFilterChange('new', feedType)}
                 >
-                  New
+                  ✨ New
                 </button>
               </div>
             </div>
@@ -805,15 +767,14 @@ export default function Home() {
               </div>
               )}
               
-              {/* Infinite scroll trigger */}
-              {!feedLoading && feed.length > 0 && (
-                <div ref={loadMoreRef} className="load-more-trigger">
-                  {feedLoadingMore && <p className="loading-more">loading more...</p>}
-                  {!feedHasMore && feed.length > 0 && <p className="no-more">no more content</p>}
-                </div>
-              )}
-            </section>
-          </div>
+            {/* Infinite scroll trigger */}
+            {!feedLoading && feed.length > 0 && (
+              <div ref={loadMoreRef} className="load-more-trigger">
+                {feedLoadingMore && <p className="loading-more">loading more...</p>}
+                {!feedHasMore && feed.length > 0 && <p className="no-more">no more content</p>}
+              </div>
+            )}
+          </section>
         )}
 
         {/* Model Detail View */}
@@ -826,40 +787,38 @@ export default function Home() {
             
             {/* Filter & Sort Controls */}
             <div className="gallery-controls">
-              <div className="filter-group">
-                <span>Type</span>
+              <div className="filter-tabs">
                 <button 
-                  className={`filter-btn ${typeFilter === 'all' ? 'active' : ''}`}
+                  className={`filter-tab ${typeFilter === 'all' ? 'active' : ''}`}
                   onClick={() => handleFilterChange('all', sortBy)}
                 >
                   All
                 </button>
                 <button 
-                  className={`filter-btn ${typeFilter === 'image' ? 'active' : ''}`}
+                  className={`filter-tab ${typeFilter === 'image' ? 'active' : ''}`}
                   onClick={() => handleFilterChange('image', sortBy)}
                 >
-                  Images
+                  📷 Photos
                 </button>
                 <button 
-                  className={`filter-btn ${typeFilter === 'video' ? 'active' : ''}`}
+                  className={`filter-tab ${typeFilter === 'video' ? 'active' : ''}`}
                   onClick={() => handleFilterChange('video', sortBy)}
                 >
-                  Videos
+                  🎬 Videos
                 </button>
               </div>
-              <div className="filter-group">
-                <span>Sort</span>
+              <div className="sort-pills">
                 <button 
-                  className={`filter-btn ${sortBy === 'top' ? 'active' : ''}`}
+                  className={`sort-pill ${sortBy === 'top' ? 'active' : ''}`}
                   onClick={() => handleFilterChange(typeFilter, 'top')}
                 >
-                  Top
+                  🔥 Top
                 </button>
                 <button 
-                  className={`filter-btn ${sortBy === 'new' ? 'active' : ''}`}
+                  className={`sort-pill ${sortBy === 'new' ? 'active' : ''}`}
                   onClick={() => handleFilterChange(typeFilter, 'new')}
                 >
-                  New
+                  ✨ New
                 </button>
               </div>
             </div>
@@ -1164,6 +1123,62 @@ export default function Home() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Models Floating Button */}
+      {view === 'models' && (
+        <button 
+          className="models-fab"
+          onClick={() => setShowModelsModal(true)}
+        >
+          <span className="models-fab-icon">👤</span>
+          <span className="models-fab-label">Models</span>
+        </button>
+      )}
+
+      {/* Models Modal */}
+      {showModelsModal && (
+        <div className="modal-overlay" onClick={() => setShowModelsModal(false)}>
+          <div className="modal models-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>👤 Browse Models</h3>
+              <button className="modal-close" onClick={() => setShowModelsModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <input
+                type="text"
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                placeholder="Search models..."
+                className="models-search-input"
+                autoFocus
+              />
+              
+              {modelsLoading ? (
+                <p className="models-modal-loading">loading...</p>
+              ) : filteredModels.length === 0 ? (
+                <p className="models-modal-empty">{modelSearch ? 'No matches found' : 'No models yet'}</p>
+              ) : (
+                <ul className="models-modal-list">
+                  {filteredModels.map((model) => (
+                    <li 
+                      key={model.name}
+                      className="models-modal-item"
+                      onClick={() => { setShowModelsModal(false); setModelSearch(''); openModelDetail(model); }}
+                    >
+                      <img src={model.thumbnail} alt="" className="models-modal-thumb" />
+                      <div className="models-modal-info">
+                        <span className="models-modal-name">{model.name}</span>
+                        <span className="models-modal-count">{model.count} {model.count === 1 ? 'post' : 'posts'}</span>
+                      </div>
+                      <span className="models-modal-arrow">→</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </div>

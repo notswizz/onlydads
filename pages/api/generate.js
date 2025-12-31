@@ -157,6 +157,8 @@ async function generateImage(referenceImages, prompt, apiKey, res) {
   const prediction = await response.json();
   const result = await pollPrediction(prediction, apiKey);
   
+  console.log('Image generation result:', JSON.stringify(result, null, 2));
+  
   if (result.status === 'succeeded') {
     const replicateOutput = Array.isArray(result.output) ? result.output[0] : result.output;
     const output = await uploadResultToS3(replicateOutput, 'image');
@@ -164,6 +166,7 @@ async function generateImage(referenceImages, prompt, apiKey, res) {
   } else {
     // Check for NSFW/safety errors
     const errorMsg = result.error || '';
+    console.log('Generation failed with error:', errorMsg);
     if (errorMsg.toLowerCase().includes('nsfw') || 
         errorMsg.toLowerCase().includes('safety') ||
         errorMsg.toLowerCase().includes('inappropriate') ||
