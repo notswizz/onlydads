@@ -1,4 +1,7 @@
+import { getServerSession } from 'next-auth';
+import { authOptions } from './auth/[...nextauth]';
 import { uploadToS3, generateFileName, getContentType } from '../../lib/s3';
+import { hasEnoughCredits, deductCredits, CREDIT_COSTS } from '../../lib/credits';
 
 export const config = {
   api: {
@@ -51,6 +54,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Require authentication
+  const session = await getServerSession(req, res, authOptions);
+  if (!session) {
+    return res.status(401).json({ error: 'You must be signed in to generate' });
+  }
+
+  const userId = session.user.id;
   const { referenceImages, prompt, mode = 'image', numFrames = 81 } = req.body;
 
   if (!referenceImages || referenceImages.length === 0) {
@@ -61,12 +71,26 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Prompt required' });
   }
 
+  // Check if user has enough credits
+  const hasCredits = await hasEnoughCredits(userId, mode);
+  if (!hasCredits) {
+    const cost = CREDIT_COSTS[mode] || 1;
+    return res.status(402).json({ 
+      error: `Not enough credits. ${mode === 'video' ? 'Videos' : 'Images'} cost ${cost} credit${cost > 1 ? 's' : ''}.`,
+      needCredits: true,
+      cost
+    });
+  }
+
   const apiKey = process.env.REPLICATE_API_TOKEN;
   if (!apiKey) {
     return res.status(500).json({ error: 'Add REPLICATE_API_TOKEN to .env.local' });
   }
 
   try {
+    // Deduct credits before generation
+    await deductCredits(userId, mode);
+    
     if (mode === 'video') {
       return await generateVideo(referenceImages, prompt, apiKey, res, numFrames);
     } else {

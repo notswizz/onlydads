@@ -2,6 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import Head from 'next/head';
 
+// Credit costs (should match server)
+const CREDIT_COSTS = {
+  image: 1,
+  video: 5,
+};
+
 
 // Prompt options
 const DAD_COUNT_OPTIONS = [
@@ -116,6 +122,12 @@ export default function Home() {
   const [modelSearch, setModelSearch] = useState('');
   const [showModelsModal, setShowModelsModal] = useState(false);
   
+  // Credits system
+  const [credits, setCredits] = useState(null);
+  const [creditPackages, setCreditPackages] = useState([]);
+  const [showCreditsModal, setShowCreditsModal] = useState(false);
+  const [purchasingPackage, setPurchasingPackage] = useState(null);
+  
   // Gallery filters (images only now - videos are shown in lightbox)
   const [sortBy, setSortBy] = useState('top'); // 'top' | 'new'
   
@@ -141,6 +153,44 @@ export default function Home() {
       setModelsLoading(false);
     }
   }, []);
+
+  // Fetch user credits
+  const fetchCredits = useCallback(async () => {
+    try {
+      const res = await fetch('/api/credits');
+      const data = await res.json();
+      if (data.success) {
+        setCredits(data.credits);
+        setCreditPackages(data.packages || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch credits:', err);
+    }
+  }, []);
+
+  // Purchase credits package
+  const purchaseCredits = async (packageId) => {
+    setPurchasingPackage(packageId);
+    try {
+      const res = await fetch('/api/credits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCredits(data.credits);
+        setShowCreditsModal(false);
+      } else {
+        alert(data.error || 'Purchase failed');
+      }
+    } catch (err) {
+      console.error('Purchase failed:', err);
+      alert('Purchase failed');
+    } finally {
+      setPurchasingPackage(null);
+    }
+  };
 
   // Fetch homepage feed (images only) with pagination
   const fetchFeed = useCallback(async (sort = 'top', page = 1, append = false) => {
@@ -216,6 +266,15 @@ export default function Home() {
     fetchModels();
     fetchFeed();
   }, [fetchModels, fetchFeed]);
+
+  // Fetch credits when session changes
+  useEffect(() => {
+    if (session) {
+      fetchCredits();
+    } else {
+      setCredits(null);
+    }
+  }, [session, fetchCredits]);
 
   // Handle view changes
   const openModelDetail = (model) => {
@@ -348,6 +407,15 @@ export default function Home() {
       });
       const data = await res.json();
       
+      // Handle credit errors
+      if (data.needCredits) {
+        setShowCreditsModal(true);
+        throw new Error(data.error);
+      }
+      
+      // Refresh credits after generation
+      fetchCredits();
+      
       if (data.success) {
         // Save to gallery
         const saveRes = await fetch('/api/save', {
@@ -455,6 +523,15 @@ export default function Home() {
         }),
       });
       const data = await res.json();
+      
+      // Handle credit errors
+      if (data.needCredits) {
+        setShowCreditsModal(true);
+        throw new Error(data.error);
+      }
+      
+      // Refresh credits after generation
+      fetchCredits();
       
       if (data.success) {
         // Save video to gallery with sourceImageId
@@ -652,6 +729,15 @@ export default function Home() {
               <span className="auth-loading">•••</span>
             ) : session ? (
               <div className="user-menu">
+                {/* Credits Display */}
+                <button 
+                  className="credits-btn"
+                  onClick={() => setShowCreditsModal(true)}
+                  title="Your credits"
+                >
+                  <span className="credits-icon">✦</span>
+                  <span className="credits-amount">{credits ?? '...'}</span>
+                </button>
                 {session.user?.image && (
                   <img src={session.user.image} alt="" className="user-avatar" />
                 )}
@@ -772,7 +858,7 @@ export default function Home() {
                     {/* Vote buttons */}
                     <div className="vote-controls">
                       <button 
-                        className={`vote-btn upvote ${item.userVote === 'up' ? 'active' : ''}`}
+                        className="vote-btn upvote"
                         onClick={(e) => { e.stopPropagation(); handleVote(item._id, 'up'); }}
                       >
                         ▲
@@ -781,7 +867,7 @@ export default function Home() {
                         {item.voteScore || 0}
                       </span>
                       <button 
-                        className={`vote-btn downvote ${item.userVote === 'down' ? 'active' : ''}`}
+                        className="vote-btn downvote"
                         onClick={(e) => { e.stopPropagation(); handleVote(item._id, 'down'); }}
                       >
                         ▼
@@ -855,7 +941,7 @@ export default function Home() {
                     {/* Vote buttons */}
                     <div className="vote-controls">
                       <button 
-                        className={`vote-btn upvote ${item.userVote === 'up' ? 'active' : ''}`}
+                        className="vote-btn upvote"
                         onClick={(e) => { e.stopPropagation(); handleVote(item._id, 'up'); }}
                       >
                         ▲
@@ -864,7 +950,7 @@ export default function Home() {
                         {item.voteScore || 0}
                       </span>
                       <button 
-                        className={`vote-btn downvote ${item.userVote === 'down' ? 'active' : ''}`}
+                        className="vote-btn downvote"
                         onClick={(e) => { e.stopPropagation(); handleVote(item._id, 'down'); }}
                       >
                         ▼
@@ -1116,24 +1202,23 @@ export default function Home() {
                 )}
               </div>
               
-              {/* Video voting when a video is selected */}
+              {/* Video voting when a video is selected - unlimited voting */}
               {selectedVideo && (
                 <div className="video-vote-section">
                   <div className="video-vote-controls">
                     <button 
-                      className={`video-vote-btn upvote ${selectedVideo.userVote === 'up' ? 'active' : ''}`}
+                      className="video-vote-btn upvote"
                       onClick={() => {
                         handleVote(selectedVideo._id, 'up');
-                        // Update local state
+                        // Update local state - simple +1
                         setLightboxVideos(prev => prev.map(v => 
                           v._id === selectedVideo._id 
-                            ? { ...v, userVote: v.userVote === 'up' ? null : 'up', voteScore: v.voteScore + (v.userVote === 'up' ? -1 : v.userVote === 'down' ? 2 : 1) }
+                            ? { ...v, voteScore: (v.voteScore || 0) + 1 }
                             : v
                         ));
                         setSelectedVideo(prev => prev ? {
                           ...prev,
-                          userVote: prev.userVote === 'up' ? null : 'up',
-                          voteScore: prev.voteScore + (prev.userVote === 'up' ? -1 : prev.userVote === 'down' ? 2 : 1)
+                          voteScore: (prev.voteScore || 0) + 1
                         } : null);
                       }}
                     >
@@ -1143,19 +1228,18 @@ export default function Home() {
                       {selectedVideo.voteScore || 0}
                     </span>
                     <button 
-                      className={`video-vote-btn downvote ${selectedVideo.userVote === 'down' ? 'active' : ''}`}
+                      className="video-vote-btn downvote"
                       onClick={() => {
                         handleVote(selectedVideo._id, 'down');
-                        // Update local state
+                        // Update local state - simple -1
                         setLightboxVideos(prev => prev.map(v => 
                           v._id === selectedVideo._id 
-                            ? { ...v, userVote: v.userVote === 'down' ? null : 'down', voteScore: v.voteScore + (v.userVote === 'down' ? 1 : v.userVote === 'up' ? -2 : -1) }
+                            ? { ...v, voteScore: (v.voteScore || 0) - 1 }
                             : v
                         ));
                         setSelectedVideo(prev => prev ? {
                           ...prev,
-                          userVote: prev.userVote === 'down' ? null : 'down',
-                          voteScore: prev.voteScore + (prev.userVote === 'down' ? 1 : prev.userVote === 'up' ? -2 : -1)
+                          voteScore: (prev.voteScore || 0) - 1
                         } : null);
                       }}
                     >
@@ -1382,6 +1466,64 @@ export default function Home() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Credits Modal */}
+      {showCreditsModal && (
+        <div className="modal-overlay" onClick={() => setShowCreditsModal(false)}>
+          <div className="modal credits-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>✦ Credits</h3>
+              <button className="modal-close" onClick={() => setShowCreditsModal(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {/* Current Balance */}
+              <div className="credits-balance">
+                <span className="balance-label">Your Balance</span>
+                <span className="balance-amount">{credits ?? 0}</span>
+                <span className="balance-unit">credits</span>
+              </div>
+
+              {/* Costs Info */}
+              <div className="credits-costs">
+                <div className="cost-item">
+                  <span className="cost-emoji">📸</span>
+                  <span className="cost-label">Image</span>
+                  <span className="cost-value">{CREDIT_COSTS.image} credit</span>
+                </div>
+                <div className="cost-item">
+                  <span className="cost-emoji">🎬</span>
+                  <span className="cost-label">Video</span>
+                  <span className="cost-value">{CREDIT_COSTS.video} credits</span>
+                </div>
+              </div>
+
+              {/* Purchase Packages */}
+              <div className="credits-packages">
+                <h4>Get More Credits</h4>
+                <p className="packages-note">⚠️ Demo mode - No payment required</p>
+                <div className="packages-grid">
+                  {creditPackages.map((pkg) => (
+                    <button
+                      key={pkg.id}
+                      className={`package-card ${pkg.popular ? 'popular' : ''}`}
+                      onClick={() => purchaseCredits(pkg.id)}
+                      disabled={purchasingPackage === pkg.id}
+                    >
+                      {pkg.popular && <span className="popular-badge">Best Value</span>}
+                      <span className="package-credits">{pkg.credits}</span>
+                      <span className="package-label">credits</span>
+                      <span className="package-price">${pkg.price}</span>
+                      {purchasingPackage === pkg.id && (
+                        <span className="package-loading">Adding...</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
