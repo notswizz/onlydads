@@ -2,66 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import Head from 'next/head';
 
-// Detect iOS device
-const isIOS = () => {
-  if (typeof window === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-};
-
-// Check if Web Share API is available
-const canShare = () => {
-  if (typeof window === 'undefined') return false;
-  return !!navigator.share;
-};
-
-// Handle share using native share sheet (works great on iOS)
-const handleShare = async (url, isVideo = false) => {
-  try {
-    // Fetch the file
-    const response = await fetch(url);
-    const blob = await response.blob();
-    const file = new File(
-      [blob], 
-      isVideo ? 'onlydads-video.mp4' : 'onlydads-image.jpg', 
-      { type: isVideo ? 'video/mp4' : 'image/jpeg' }
-    );
-    
-    // Use Web Share API
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        files: [file],
-        title: 'OnlyDads',
-        text: isVideo ? 'Check out this video!' : 'Check out this image!',
-      });
-      return true;
-    }
-  } catch (err) {
-    console.log('Share failed:', err);
-  }
-  return false;
-};
-
-// Handle download - uses share on iOS, direct download on desktop
-const handleDownload = async (url, isVideo = false) => {
-  // On iOS, try native share first (allows saving to Photos)
-  if (isIOS() && canShare()) {
-    const shared = await handleShare(url, isVideo);
-    if (shared) return;
-  }
-  
-  // Fallback: open in new tab on iOS, download on desktop
-  if (isIOS()) {
-    window.open(url, '_blank');
-  } else {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = isVideo ? 'onlydads-video.mp4' : 'onlydads-image.jpg';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }
-};
 
 // Prompt options
 const DAD_COUNT_OPTIONS = [
@@ -1220,13 +1160,6 @@ export default function Home() {
                 )}
               </div>
               
-              {/* iOS save hint for videos */}
-              {selectedVideo && isIOS() && (
-                <div className="ios-save-hint">
-                  📱 Tap "Save to Photos" to save video directly
-                </div>
-              )}
-              
               {/* Action buttons */}
               <div className="lightbox-actions-bar">
                 {!selectedVideo ? (
@@ -1244,15 +1177,13 @@ export default function Home() {
                     <span>←</span> Back to Image
                   </button>
                 )}
-                <button 
+                <a 
                   className="action-btn download"
-                  onClick={() => handleDownload(
-                    selectedVideo ? selectedVideo.generatedImage : lightboxItem.generatedImage,
-                    !!selectedVideo
-                  )}
+                  href={selectedVideo ? selectedVideo.generatedImage : lightboxItem.generatedImage}
+                  download
                 >
-                  <span>{isIOS() ? '📤' : '↓'}</span> {isIOS() ? 'Save to Photos' : 'Download'}
-                </button>
+                  <span>↓</span> Download
+                </a>
               </div>
             </div>
           </div>
@@ -1366,13 +1297,14 @@ export default function Home() {
                 </div>
                 <div className="job-actions">
                   {job.status === 'completed' && job.result && (
-                    <button 
+                    <a 
                       className="job-download"
-                      onClick={() => handleDownload(job.result.generatedImage, false)}
+                      href={job.result.generatedImage}
+                      download
                       title="Download"
                     >
                       ↓
-                    </button>
+                    </a>
                   )}
                 </div>
               </div>
@@ -1400,13 +1332,14 @@ export default function Home() {
                 </div>
                 <div className="job-actions">
                   {job.status === 'completed' && job.result && (
-                    <button 
+                    <a 
                       className="job-download"
-                      onClick={() => handleDownload(job.result.generatedImage, true)}
-                      title={isIOS() ? 'Open to Save' : 'Download'}
+                      href={job.result.generatedImage}
+                      download
+                      title="Download"
                     >
                       ↓
-                    </button>
+                    </a>
                   )}
                 </div>
               </div>

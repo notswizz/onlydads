@@ -1338,18 +1338,6 @@ body {
   border-color: rgba(255, 255, 255, 0.25);
 }
 
-/* iOS Save Hint */
-.ios-save-hint {
-  text-align: center;
-  padding: 8px 12px;
-  background: rgba(251, 191, 36, 0.15);
-  border: 1px solid rgba(251, 191, 36, 0.3);
-  border-radius: 10px;
-  font-size: 0.8rem;
-  color: var(--accent-gold);
-  margin-bottom: 8px;
-}
-
 /* Video Vote Section */
 .video-vote-section {
   padding: 16px 20px;
