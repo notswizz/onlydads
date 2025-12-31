@@ -670,30 +670,68 @@ export default function Home() {
         {/* Homepage Feed */}
         {view === 'models' && (
           <section className="feed-section">
-            {/* Sort Controls */}
-            <div className="gallery-controls">
-              <div className="sort-pills">
-                <button 
-                  className={`sort-pill ${feedSort === 'top' ? 'active' : ''}`}
-                  onClick={() => handleFeedSortChange('top')}
-                >
-                  🔥 Top
-                </button>
-                <button 
-                  className={`sort-pill ${feedSort === 'new' ? 'active' : ''}`}
-                  onClick={() => handleFeedSortChange('new')}
-                >
-                  ✨ New
-                </button>
+            {/* Sort Controls - only show when logged in */}
+            {session && (
+              <div className="gallery-controls">
+                <div className="sort-pills">
+                  <button 
+                    className={`sort-pill ${feedSort === 'top' ? 'active' : ''}`}
+                    onClick={() => handleFeedSortChange('top')}
+                  >
+                    🔥 Top
+                  </button>
+                  <button 
+                    className={`sort-pill ${feedSort === 'new' ? 'active' : ''}`}
+                    onClick={() => handleFeedSortChange('new')}
+                  >
+                    ✨ New
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
             
             {!session ? (
-              <div className="empty-state">
-                <p>Sign in to view your personal gallery</p>
-                <button className="btn primary" onClick={() => signIn('google')}>
-                  ✦ Sign In with Google
-                </button>
+              <div className="landing-hero">
+                <div className="hero-content">
+                  <div className="hero-badge">AI-Powered • Instant Results</div>
+                  <h2 className="hero-title">
+                    Add <span className="hero-accent">distinguished gentlemen</span> to any photo
+                  </h2>
+                  <p className="hero-subtitle">
+                    Upload your photos, customize the scene, and let AI do the magic. 
+                    Generate age gap erotic images and videos in seconds.
+                  </p>
+                  
+                  <div className="hero-features">
+                    <div className="feature-item">
+                      <span className="feature-icon">📸</span>
+                      <span className="feature-text">Upload any photo</span>
+                    </div>
+                    <div className="feature-item">
+                      <span className="feature-icon">🎛️</span>
+                      <span className="feature-text">Customize poses & styles</span>
+                    </div>
+                    <div className="feature-item">
+                      <span className="feature-icon">🎬</span>
+                      <span className="feature-text">Create AI videos</span>
+                    </div>
+                  </div>
+                  
+                  <button className="hero-cta" onClick={() => signIn('google')}>
+                    <span className="cta-icon">✦</span>
+                    Get Started with Google
+                  </button>
+                  
+                  <p className="hero-note">Free to try • No credit card required</p>
+                </div>
+                
+                <div className="hero-visual">
+                  <div className="preview-stack">
+                    <div className="preview-card preview-1">👴</div>
+                    <div className="preview-card preview-2">👴👴</div>
+                    <div className="preview-card preview-3">🎬</div>
+                  </div>
+                </div>
               </div>
             ) : feedLoading ? (
               <p className="loading">loading...</p>
@@ -1190,8 +1228,8 @@ export default function Home() {
         </div>
       )}
 
-      {/* Models Floating Button */}
-      {view === 'models' && (
+      {/* Models Floating Button - only show when logged in */}
+      {view === 'models' && session && (
         <button 
           className="models-fab"
           onClick={() => setShowModelsModal(true)}
