@@ -834,7 +834,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9999;
   padding: 24px;
 }
 
@@ -1024,7 +1024,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: 9998;
   padding: 20px;
   backdrop-filter: blur(20px);
 }
@@ -1329,11 +1329,25 @@ body {
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  font-family: inherit;
 }
 
 .action-btn.download:hover {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.25);
+}
+
+/* iOS Save Hint */
+.ios-save-hint {
+  text-align: center;
+  padding: 8px 12px;
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 10px;
+  font-size: 0.8rem;
+  color: var(--accent-gold);
+  margin-bottom: 8px;
 }
 
 /* Video Vote Section */
@@ -2419,4 +2433,6 @@ body {
     font-size: 0.8rem;
   }
 }
+
+
 

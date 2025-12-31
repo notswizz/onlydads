@@ -2,6 +2,29 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import Head from 'next/head';
 
+// Detect iOS device
+const isIOS = () => {
+  if (typeof window === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+};
+
+// Handle download - opens in new tab on iOS for easy saving
+const handleDownload = (url, isVideo = false) => {
+  if (isIOS()) {
+    // On iOS, open in new tab - user can then long-press to save
+    window.open(url, '_blank');
+  } else {
+    // On other devices, trigger download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = isVideo ? 'onlydads-video.mp4' : 'onlydads-image.jpg';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+};
+
 // Prompt options
 const DAD_COUNT_OPTIONS = [
   { value: '1', label: '1 old man' },
@@ -34,6 +57,7 @@ const RACE_OPTIONS = [
   { value: 'indian', label: 'Indian' },
   { value: 'arab', label: 'Arab' },
 ];
+
 
 // Build prompt from options
 const buildPrompt = (dadCount, pose, shirt, race) => {
@@ -80,6 +104,7 @@ export default function Home() {
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
   
+  
   // Model input with autocomplete
   const [modelInput, setModelInput] = useState('');
   const [modelSuggestions, setModelSuggestions] = useState([]);
@@ -101,6 +126,7 @@ export default function Home() {
   const [imageJobs, setImageJobs] = useState([]);
   const [videoJobs, setVideoJobs] = useState([]);
   const [showJobsPanel, setShowJobsPanel] = useState(false);
+  
   
   // Lightbox for viewing images/videos
   const [lightboxItem, setLightboxItem] = useState(null);
@@ -324,6 +350,7 @@ export default function Home() {
       reader.readAsDataURL(file);
     }
   };
+  
 
   // Build the current prompt based on selections
   const currentPrompt = buildPrompt(dadCount, selectedPose, shirtStyle, race);
@@ -414,12 +441,17 @@ export default function Home() {
     setImageJobs(prev => [newJob, ...prev]);
     setShowJobsPanel(true);
     
+    // Store values before reset
+    const imageToProcess = uploadedImageBase64;
+    const modelNameToProcess = modelInput.trim();
+    const promptToProcess = currentPrompt;
+    
     // Reset upload form and go home
     reset();
     setView('models');
     
     // Process in background
-    processImageJob(jobId, uploadedImageBase64, currentPrompt, modelInput.trim());
+    processImageJob(jobId, imageToProcess, promptToProcess, modelNameToProcess);
   };
 
   // Open video modal for gallery item
@@ -837,130 +869,131 @@ export default function Home() {
                 className="dropzone"
                 onClick={() => fileInputRef.current?.click()}
               >
-                  {uploadedImage ? (
-                    <img src={uploadedImage} alt="Upload" className="preview" />
-                  ) : (
-                    <div className="dropzone-text">
-                      <span>+</span>
-                      <p>Drop image or tap to upload</p>
-                    </div>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    hidden
-                  />
-                </div>
-
-                {uploadedImage && (
-                  <>
-                    {/* Prompt Customization Options */}
-                    <div className="prompt-options">
-                      <div className="option-group">
-                        <label>How many old men?</label>
-                        <div className="option-buttons">
-                          {DAD_COUNT_OPTIONS.map(opt => (
-                            <button
-                              key={opt.value}
-                              className={`option-btn ${dadCount === opt.value ? 'active' : ''}`}
-                              onClick={() => setDadCount(opt.value)}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <div className="option-group">
-                        <label>Shirt style</label>
-                        <div className="option-buttons">
-                          {SHIRT_OPTIONS.map(opt => (
-                            <button
-                              key={opt.value}
-                              className={`option-btn ${shirtStyle === opt.value ? 'active' : ''}`}
-                              onClick={() => setShirtStyle(opt.value)}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <div className="option-group">
-                        <label>Race</label>
-                        <div className="option-buttons wrap">
-                          {RACE_OPTIONS.map(opt => (
-                            <button
-                              key={opt.value}
-                              className={`option-btn ${race === opt.value ? 'active' : ''}`}
-                              onClick={() => setRace(opt.value)}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <div className="option-group">
-                        <label>Pose</label>
-                        <div className="option-buttons wrap">
-                          {POSE_OPTIONS.map(opt => (
-                            <button
-                              key={opt.value}
-                              className={`option-btn ${selectedPose === opt.value ? 'active' : ''}`}
-                              onClick={() => setSelectedPose(opt.value)}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      <div className="prompt-preview">
-                        <span>Prompt:</span> {currentPrompt}
-                      </div>
-                    </div>
-                    
-                    {/* Model Input with Autocomplete */}
-                    <div className="prompt-options">
-                      <div className="option-group">
-                        <label>Model Name</label>
-                        <div className="autocomplete-wrapper">
-                          <input
-                            type="text"
-                            value={modelInput}
-                            onChange={handleModelInputChange}
-                            onFocus={() => { fetchSuggestions(modelInput); setShowSuggestions(true); }}
-                            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-                            placeholder="Enter model name..."
-                            className="model-input"
-                          />
-                          {showSuggestions && modelSuggestions.length > 0 && (
-                            <ul className="suggestions-list">
-                              {modelSuggestions.slice(0, 8).map((name) => (
-                                <li key={name} onMouseDown={() => selectSuggestion(name)}>
-                                  {name}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="actions">
-                      <button className="btn primary" onClick={handleGenerate} disabled={!modelInput.trim()}>
-                        ✦ Generate & Save
-                      </button>
-                      <button className="btn secondary" onClick={reset}>Clear</button>
-                    </div>
-                  </>
+                {uploadedImage ? (
+                  <img src={uploadedImage} alt="Upload" className="preview" />
+                ) : (
+                  <div className="dropzone-text">
+                    <span>+</span>
+                    <p>Drop image or tap to upload</p>
+                  </div>
                 )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                  hidden
+                />
+              </div>
 
-                {error && <p className="error">⚠️ {error}</p>}
-              </>
+              {uploadedImage && (
+                <>
+                  {/* Prompt Customization Options for Dad Mode */}
+                  <div className="prompt-options">
+                    <div className="option-group">
+                      <label>How many old men?</label>
+                      <div className="option-buttons">
+                        {DAD_COUNT_OPTIONS.map(opt => (
+                          <button
+                            key={opt.value}
+                            className={`option-btn ${dadCount === opt.value ? 'active' : ''}`}
+                            onClick={() => setDadCount(opt.value)}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="option-group">
+                      <label>Shirt style</label>
+                      <div className="option-buttons">
+                        {SHIRT_OPTIONS.map(opt => (
+                          <button
+                            key={opt.value}
+                            className={`option-btn ${shirtStyle === opt.value ? 'active' : ''}`}
+                            onClick={() => setShirtStyle(opt.value)}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="option-group">
+                      <label>Race</label>
+                      <div className="option-buttons wrap">
+                        {RACE_OPTIONS.map(opt => (
+                          <button
+                            key={opt.value}
+                            className={`option-btn ${race === opt.value ? 'active' : ''}`}
+                            onClick={() => setRace(opt.value)}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="option-group">
+                      <label>Pose</label>
+                      <div className="option-buttons wrap">
+                        {POSE_OPTIONS.map(opt => (
+                          <button
+                            key={opt.value}
+                            className={`option-btn ${selectedPose === opt.value ? 'active' : ''}`}
+                            onClick={() => setSelectedPose(opt.value)}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div className="prompt-preview">
+                      <span>Prompt:</span> {currentPrompt}
+                    </div>
+                  </div>
+                  
+                  {/* Model Input with Autocomplete */}
+                  <div className="prompt-options">
+                    <div className="option-group">
+                      <label>Model Name</label>
+                      <div className="autocomplete-wrapper">
+                        <input
+                          type="text"
+                          value={modelInput}
+                          onChange={handleModelInputChange}
+                          onFocus={() => { fetchSuggestions(modelInput); setShowSuggestions(true); }}
+                          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+                          placeholder="Enter model name..."
+                          className="model-input"
+                        />
+                        {showSuggestions && modelSuggestions.length > 0 && (
+                          <ul className="suggestions-list">
+                            {modelSuggestions.slice(0, 8).map((name) => (
+                              <li key={name} onMouseDown={() => selectSuggestion(name)}>
+                                {name}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="actions">
+                    <button className="btn primary" onClick={handleGenerate} disabled={!modelInput.trim()}>
+                      ✦ Generate & Save
+                    </button>
+                    <button className="btn secondary" onClick={reset}>Clear</button>
+                  </div>
+                </>
+              )}
+
+
+              {error && <p className="error">⚠️ {error}</p>}
+            </>
           </section>
         )}
 
@@ -1149,6 +1182,13 @@ export default function Home() {
                 )}
               </div>
               
+              {/* iOS save hint for videos */}
+              {selectedVideo && isIOS() && (
+                <div className="ios-save-hint">
+                  📱 Tap "Open to Save" then long-press video to save to Photos
+                </div>
+              )}
+              
               {/* Action buttons */}
               <div className="lightbox-actions-bar">
                 {!selectedVideo ? (
@@ -1166,13 +1206,15 @@ export default function Home() {
                     <span>←</span> Back to Image
                   </button>
                 )}
-                <a 
-                  href={selectedVideo ? selectedVideo.generatedImage : lightboxItem.generatedImage} 
-                  download 
+                <button 
                   className="action-btn download"
+                  onClick={() => handleDownload(
+                    selectedVideo ? selectedVideo.generatedImage : lightboxItem.generatedImage,
+                    !!selectedVideo
+                  )}
                 >
-                  <span>↓</span> Download
-                </a>
+                  <span>↓</span> {isIOS() && selectedVideo ? 'Open to Save' : 'Download'}
+                </button>
               </div>
             </div>
           </div>
@@ -1286,14 +1328,13 @@ export default function Home() {
                 </div>
                 <div className="job-actions">
                   {job.status === 'completed' && job.result && (
-                    <a 
-                      href={job.result.generatedImage} 
-                      download 
+                    <button 
                       className="job-download"
+                      onClick={() => handleDownload(job.result.generatedImage, false)}
                       title="Download"
                     >
                       ↓
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>
@@ -1321,14 +1362,13 @@ export default function Home() {
                 </div>
                 <div className="job-actions">
                   {job.status === 'completed' && job.result && (
-                    <a 
-                      href={job.result.generatedImage} 
-                      download 
+                    <button 
                       className="job-download"
-                      title="Download"
+                      onClick={() => handleDownload(job.result.generatedImage, true)}
+                      title={isIOS() ? 'Open to Save' : 'Download'}
                     >
                       ↓
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>
