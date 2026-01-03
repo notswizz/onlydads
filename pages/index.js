@@ -128,6 +128,11 @@ export default function Home() {
   const [showCreditsModal, setShowCreditsModal] = useState(false);
   const [purchasingPackage, setPurchasingPackage] = useState(null);
   
+  // Favorites
+  const [favorites, setFavorites] = useState([]);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
+  const [favoriteIds, setFavoriteIds] = useState(new Set());
+  
   // Gallery filters (images only now - videos are shown in lightbox)
   const [sortBy, setSortBy] = useState('top'); // 'top' | 'new'
   
@@ -189,6 +194,67 @@ export default function Home() {
       alert('Purchase failed');
     } finally {
       setPurchasingPackage(null);
+    }
+  };
+
+  // Shuffle array randomly
+  const shuffleArray = (array) => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
+  // Fetch user favorites (randomly sorted)
+  const fetchFavorites = useCallback(async () => {
+    try {
+      setFavoritesLoading(true);
+      const res = await fetch('/api/favorites');
+      const data = await res.json();
+      if (data.success) {
+        // Shuffle favorites randomly each time
+        setFavorites(shuffleArray(data.favorites));
+        setFavoriteIds(new Set(data.favorites.map(f => f._id)));
+      }
+    } catch (err) {
+      console.error('Failed to fetch favorites:', err);
+    } finally {
+      setFavoritesLoading(false);
+    }
+  }, []);
+
+  // Toggle favorite on a creation
+  const toggleFavorite = async (creationId) => {
+    if (!session) {
+      signIn('google');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/favorites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ creationId }),
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        if (data.favorited) {
+          setFavoriteIds(prev => new Set([...prev, creationId]));
+        } else {
+          setFavoriteIds(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(creationId);
+            return newSet;
+          });
+          // Remove from favorites list if viewing favorites
+          setFavorites(prev => prev.filter(f => f._id !== creationId));
+        }
+      }
+    } catch (err) {
+      console.error('Toggle favorite failed:', err);
     }
   };
 
@@ -267,14 +333,17 @@ export default function Home() {
     fetchFeed();
   }, [fetchModels, fetchFeed]);
 
-  // Fetch credits when session changes
+  // Fetch credits and favorites when session changes
   useEffect(() => {
     if (session) {
       fetchCredits();
+      fetchFavorites();
     } else {
       setCredits(null);
+      setFavorites([]);
+      setFavoriteIds(new Set());
     }
-  }, [session, fetchCredits]);
+  }, [session, fetchCredits, fetchFavorites]);
 
   // Handle view changes
   const openModelDetail = (model) => {
@@ -772,6 +841,15 @@ export default function Home() {
                   >
                     ✨ New
                   </button>
+                  <button 
+                    className={`sort-pill ${feedSort === 'favorites' ? 'active' : ''}`}
+                    onClick={() => {
+                      setFeedSort('favorites');
+                      fetchFavorites();
+                    }}
+                  >
+                    ❤️ Favorites
+                  </button>
                 </div>
               </div>
             )}
@@ -819,14 +897,79 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            ) : feedLoading ? (
+            ) : (feedSort === 'favorites' ? favoritesLoading : feedLoading) ? (
               <p className="loading">loading...</p>
-            ) : feed.length === 0 ? (
+            ) : (feedSort === 'favorites' ? favorites : feed).length === 0 ? (
               <div className="empty-state">
-                <p>Your gallery is empty</p>
-                <button className="btn primary" onClick={openUpload}>
-                  Upload your first creation
-                </button>
+                <p>{feedSort === 'favorites' ? 'No favorites yet - heart some videos!' : 'Your gallery is empty'}</p>
+                {feedSort !== 'favorites' && (
+                  <button className="btn primary" onClick={openUpload}>
+                    Upload your first creation
+                  </button>
+                )}
+              </div>
+            ) : feedSort === 'favorites' ? (
+              /* Favorites Video Gallery */
+              <div className="favorites-video-grid">
+                {favorites.map((video) => (
+                  <div key={video._id} className="favorite-video-card">
+                    {/* Model badge */}
+                    <span className="model-badge" onClick={(e) => { e.stopPropagation(); openModelDetail({ name: video.model, count: 0 }); }}>
+                      {video.model}
+                    </span>
+                    
+                    {/* Unfavorite button */}
+                    <button 
+                      className="favorite-remove-btn"
+                      onClick={(e) => { e.stopPropagation(); toggleFavorite(video._id); }}
+                      title="Remove from favorites"
+                    >
+                      ❤️
+                    </button>
+                    
+                    <video 
+                      src={video.generatedImage} 
+                      muted 
+                      loop
+                      playsInline
+                      className="favorite-video"
+                      onMouseEnter={(e) => e.target.play()}
+                      onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 0; }}
+                      onTouchStart={(e) => { 
+                        if (e.target.paused) e.target.play(); 
+                        else { e.target.pause(); e.target.currentTime = 0; }
+                      }}
+                    />
+                    
+                    <div className="favorite-video-overlay">
+                      <span className="play-hint">▶</span>
+                    </div>
+                    
+                    {/* Vote controls */}
+                    <div className="favorite-video-footer">
+                      <div className="vote-controls compact">
+                        <button 
+                          className="vote-btn upvote"
+                          onClick={(e) => { e.stopPropagation(); handleVote(video._id, 'up'); }}
+                        >
+                          ▲
+                        </button>
+                        <span className={`vote-count ${video.voteScore > 0 ? 'positive' : video.voteScore < 0 ? 'negative' : ''}`}>
+                          {video.voteScore || 0}
+                        </span>
+                        <button 
+                          className="vote-btn downvote"
+                          onClick={(e) => { e.stopPropagation(); handleVote(video._id, 'down'); }}
+                        >
+                          ▼
+                        </button>
+                      </div>
+                      {video.prompt && (
+                        <p className="favorite-video-prompt">{video.prompt}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="gallery-grid">
@@ -1245,6 +1388,13 @@ export default function Home() {
                     >
                       ▼
                     </button>
+                    <button 
+                      className={`video-vote-btn favorite ${favoriteIds.has(selectedVideo._id) ? 'active' : ''}`}
+                      onClick={() => toggleFavorite(selectedVideo._id)}
+                      title={favoriteIds.has(selectedVideo._id) ? 'Remove from favorites' : 'Add to favorites'}
+                    >
+                      {favoriteIds.has(selectedVideo._id) ? '❤️' : '🤍'}
+                    </button>
                   </div>
                   <p className="video-prompt-preview">{selectedVideo.prompt}</p>
                 </div>
@@ -1277,6 +1427,10 @@ export default function Home() {
                       <span className={`video-score-badge ${video.voteScore > 0 ? 'positive' : video.voteScore < 0 ? 'negative' : ''}`}>
                         {video.voteScore || 0}
                       </span>
+                      {/* Favorite indicator */}
+                      {favoriteIds.has(video._id) && (
+                        <span className="video-favorite-badge">❤️</span>
+                      )}
                     </div>
                   ))
                 )}
