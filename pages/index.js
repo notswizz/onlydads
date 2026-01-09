@@ -125,8 +125,15 @@ export default function Home() {
   // Credits system
   const [credits, setCredits] = useState(null);
   const [creditPackages, setCreditPackages] = useState([]);
-  const [showCreditsModal, setShowCreditsModal] = useState(false);
   const [purchasingPackage, setPurchasingPackage] = useState(null);
+  
+  // Profile modal
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  
+  // Referral system
+  const [referralInfo, setReferralInfo] = useState(null);
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [referralCopied, setReferralCopied] = useState(false);
   
   // Favorites
   const [favorites, setFavorites] = useState([]);
@@ -173,26 +180,101 @@ export default function Home() {
     }
   }, []);
 
-  // Purchase credits package
+  // Fetch referral info
+  const fetchReferralInfo = useCallback(async () => {
+    try {
+      setReferralLoading(true);
+      const res = await fetch('/api/referrals');
+      const data = await res.json();
+      if (data.success) {
+        setReferralInfo(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch referral info:', err);
+    } finally {
+      setReferralLoading(false);
+    }
+  }, []);
+
+  // Copy referral link to clipboard
+  const copyReferralLink = () => {
+    if (!referralInfo?.referralCode) return;
+    const link = `${window.location.origin}?ref=${referralInfo.referralCode}`;
+    navigator.clipboard.writeText(link);
+    setReferralCopied(true);
+    setTimeout(() => setReferralCopied(false), 2000);
+  };
+
+  // Check for referral code and payment status in URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    
+    // Handle referral code
+    const refCode = params.get('ref');
+    if (refCode) {
+      // Store in localStorage for when they sign up
+      localStorage.setItem('referralCode', refCode);
+      // Track the click (fire and forget)
+      fetch('/api/referrals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'click', referralCode: refCode })
+      }).catch(() => {}); // Ignore errors
+    }
+    
+    // Handle payment status
+    const paymentStatus = params.get('payment');
+    if (paymentStatus === 'success') {
+      // Refresh credits after a short delay (webhook needs to process)
+      setTimeout(() => {
+        fetchCredits();
+      }, 2000);
+    }
+    
+    // Clean URL if has params
+    if (refCode || paymentStatus) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [fetchCredits]);
+
+  // Complete referral after sign in
+  useEffect(() => {
+    if (session) {
+      const storedRefCode = localStorage.getItem('referralCode');
+      if (storedRefCode) {
+        // Complete the referral
+        fetch('/api/referrals', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'complete', referralCode: storedRefCode })
+        }).then(() => {
+          localStorage.removeItem('referralCode');
+          fetchCredits(); // Refresh credits after bonus
+        });
+      }
+    }
+  }, [session, fetchCredits]);
+
+  // Purchase credits package via Coinbase Commerce
   const purchaseCredits = async (packageId) => {
     setPurchasingPackage(packageId);
     try {
-      const res = await fetch('/api/credits', {
+      const res = await fetch('/api/payments/create-charge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ packageId }),
       });
       const data = await res.json();
-      if (data.success) {
-        setCredits(data.credits);
-        setShowCreditsModal(false);
+      if (data.success && data.checkoutUrl) {
+        // Redirect to Coinbase Commerce checkout
+        window.location.href = data.checkoutUrl;
       } else {
-        alert(data.error || 'Purchase failed');
+        alert(data.error || 'Failed to create payment');
+        setPurchasingPackage(null);
       }
     } catch (err) {
       console.error('Purchase failed:', err);
-      alert('Purchase failed');
-    } finally {
+      alert('Payment failed to initialize');
       setPurchasingPackage(null);
     }
   };
@@ -342,8 +424,16 @@ export default function Home() {
       setCredits(null);
       setFavorites([]);
       setFavoriteIds(new Set());
+      setReferralInfo(null);
     }
   }, [session, fetchCredits, fetchFavorites]);
+
+  // Fetch referral info when profile modal opens
+  useEffect(() => {
+    if (showProfileModal && session && !referralInfo) {
+      fetchReferralInfo();
+    }
+  }, [showProfileModal, session, referralInfo, fetchReferralInfo]);
 
   // Handle view changes
   const openModelDetail = (model) => {
@@ -478,7 +568,7 @@ export default function Home() {
       
       // Handle credit errors
       if (data.needCredits) {
-        setShowCreditsModal(true);
+        setShowProfileModal(true);
         throw new Error(data.error);
       }
       
@@ -595,7 +685,7 @@ export default function Home() {
       
       // Handle credit errors
       if (data.needCredits) {
-        setShowCreditsModal(true);
+        setShowProfileModal(true);
         throw new Error(data.error);
       }
       
@@ -789,11 +879,6 @@ export default function Home() {
                 ← Home
               </button>
             )}
-            {view === 'models' && session && (
-              <button className="upload-btn" onClick={openUpload}>
-                ✦ Upload
-              </button>
-            )}
             {status === 'loading' ? (
               <span className="auth-loading">•••</span>
             ) : session ? (
@@ -801,18 +886,21 @@ export default function Home() {
                 {/* Credits Display */}
                 <button 
                   className="credits-btn"
-                  onClick={() => setShowCreditsModal(true)}
+                  onClick={() => setShowProfileModal(true)}
                   title="Your credits"
                 >
                   <span className="credits-icon">✦</span>
                   <span className="credits-amount">{credits ?? '...'}</span>
                 </button>
                 {session.user?.image && (
-                  <img src={session.user.image} alt="" className="user-avatar" />
+                  <img 
+                    src={session.user.image} 
+                    alt="" 
+                    className="user-avatar" 
+                    onClick={() => setShowProfileModal(true)}
+                    title="Profile"
+                  />
                 )}
-                <button className="auth-btn logout" onClick={() => signOut()}>
-                  Sign Out
-                </button>
               </div>
             ) : (
               <button className="auth-btn login" onClick={() => signIn('google')}>
@@ -964,9 +1052,6 @@ export default function Home() {
                           ▼
                         </button>
                       </div>
-                      {video.prompt && (
-                        <p className="favorite-video-prompt">{video.prompt}</p>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -1466,6 +1551,16 @@ export default function Home() {
         </div>
       )}
 
+      {/* Upload Floating Button */}
+      {view === 'models' && session && (
+        <button 
+          className="upload-fab"
+          onClick={openUpload}
+        >
+          <span className="upload-fab-icon">+</span>
+        </button>
+      )}
+
       {/* Models Floating Button - only show when logged in */}
       {view === 'models' && session && (
         <button 
@@ -1482,30 +1577,21 @@ export default function Home() {
         <div className="modal-overlay" onClick={() => setShowModelsModal(false)}>
           <div className="modal models-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>👤 Browse Models</h3>
+              <h3>👤 Models</h3>
               <button className="modal-close" onClick={() => setShowModelsModal(false)}>✕</button>
             </div>
             <div className="modal-body">
-              <input
-                type="text"
-                value={modelSearch}
-                onChange={(e) => setModelSearch(e.target.value)}
-                placeholder="Search models..."
-                className="models-search-input"
-                autoFocus
-              />
-              
               {modelsLoading ? (
                 <p className="models-modal-loading">loading...</p>
-              ) : filteredModels.length === 0 ? (
-                <p className="models-modal-empty">{modelSearch ? 'No matches found' : 'No models yet'}</p>
+              ) : models.length === 0 ? (
+                <p className="models-modal-empty">No models yet</p>
               ) : (
                 <ul className="models-modal-list">
-                  {filteredModels.map((model) => (
+                  {models.map((model) => (
                     <li 
                       key={model.name}
                       className="models-modal-item"
-                      onClick={() => { setShowModelsModal(false); setModelSearch(''); openModelDetail(model); }}
+                      onClick={() => { setShowModelsModal(false); openModelDetail(model); }}
                     >
                       <img src={model.thumbnail} alt="" className="models-modal-thumb" />
                       <div className="models-modal-info">
@@ -1624,16 +1710,27 @@ export default function Home() {
         </div>
       )}
 
-      {/* Credits Modal */}
-      {showCreditsModal && (
-        <div className="modal-overlay" onClick={() => setShowCreditsModal(false)}>
-          <div className="modal credits-modal" onClick={(e) => e.stopPropagation()}>
+      {/* Profile & Credits Modal */}
+      {showProfileModal && session && (
+        <div className="modal-overlay" onClick={() => setShowProfileModal(false)}>
+          <div className="modal profile-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>✦ Credits</h3>
-              <button className="modal-close" onClick={() => setShowCreditsModal(false)}>✕</button>
+              <h3>Profile</h3>
+              <button className="modal-close" onClick={() => setShowProfileModal(false)}>✕</button>
             </div>
             <div className="modal-body">
-              {/* Current Balance */}
+              {/* Profile Info */}
+              <div className="profile-info">
+                {session.user?.image && (
+                  <img src={session.user.image} alt="" className="profile-avatar" />
+                )}
+                <div className="profile-details">
+                  <span className="profile-name">{session.user?.name || 'User'}</span>
+                  <span className="profile-email">{session.user?.email}</span>
+                </div>
+              </div>
+              
+              {/* Credits Balance */}
               <div className="credits-balance">
                 <span className="balance-label">Your Balance</span>
                 <span className="balance-amount">{credits ?? 0}</span>
@@ -1657,7 +1754,7 @@ export default function Home() {
               {/* Purchase Packages */}
               <div className="credits-packages">
                 <h4>Get More Credits</h4>
-                <p className="packages-note">⚠️ Demo mode - No payment required</p>
+                <p className="packages-note">💰 Pay with crypto (BTC, ETH, USDC & more)</p>
                 <div className="packages-grid">
                   {creditPackages.map((pkg) => (
                     <button
@@ -1677,6 +1774,53 @@ export default function Home() {
                   ))}
                 </div>
               </div>
+
+              {/* Referral Section */}
+              <div className="referral-section">
+                <div className="referral-header">
+                  <h4>🎁 Invite Friends</h4>
+                  <span className="referral-reward">+{referralInfo?.rewards?.referrer || 10} credits each</span>
+                </div>
+                
+                <p className="referral-description">
+                  Share your link and earn credits when friends sign up!
+                </p>
+                
+                {referralLoading ? (
+                  <div className="referral-loading">Loading...</div>
+                ) : (
+                  <>
+                    <div className="referral-link-box">
+                      <span className="referral-code">{referralInfo?.referralCode || '...'}</span>
+                      <button 
+                        className={`referral-copy-btn ${referralCopied ? 'copied' : ''}`}
+                        onClick={copyReferralLink}
+                      >
+                        {referralCopied ? '✓ Copied!' : 'Copy Link'}
+                      </button>
+                    </div>
+                    
+                    <div className="referral-stats">
+                      <div className="referral-stat">
+                        <span className="referral-stat-value">{referralInfo?.stats?.signups || 0}</span>
+                        <span className="referral-stat-label">Friends joined</span>
+                      </div>
+                      <div className="referral-stat">
+                        <span className="referral-stat-value">{referralInfo?.stats?.creditsEarned || 0}</span>
+                        <span className="referral-stat-label">Credits earned</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              
+              {/* Sign Out */}
+              <button 
+                className="profile-logout-btn"
+                onClick={() => signOut()}
+              >
+                Sign Out
+              </button>
             </div>
           </div>
         </div>
