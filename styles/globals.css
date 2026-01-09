@@ -1774,6 +1774,100 @@ body::after {
   flex: none;
 }
 
+/* Delete Confirmation Modal */
+.delete-modal-overlay {
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.delete-modal {
+  background: linear-gradient(145deg, #1a1a1f 0%, #0f0f12 100%);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 24px;
+  padding: 32px;
+  max-width: 340px;
+  width: 100%;
+  text-align: center;
+  animation: deleteModalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 
+    0 0 80px rgba(239, 68, 68, 0.15),
+    0 25px 50px rgba(0, 0, 0, 0.5);
+}
+
+@keyframes deleteModalPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.delete-modal-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+  filter: grayscale(0.3);
+}
+
+.delete-modal h3 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 8px;
+}
+
+.delete-modal p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin: 0 0 24px;
+}
+
+.delete-modal-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.delete-modal-cancel {
+  flex: 1;
+  padding: 14px 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.delete-modal-cancel:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.delete-modal-confirm {
+  flex: 1;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+}
+
+.delete-modal-confirm:hover {
+  background: linear-gradient(135deg, #f87171, #ef4444);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
+}
+
 /* Video Prompt */
 .video-prompt-input {
   width: 100%;
@@ -1986,6 +2080,55 @@ body::after {
   background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
   border-color: transparent;
   transform: translateX(-4px);
+}
+
+/* Video Chain Indicator */
+.video-chain-indicator {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  z-index: 10;
+}
+
+.chain-progress {
+  background: linear-gradient(135deg, var(--accent-tertiary), var(--accent-cyan));
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 8px 16px;
+  border-radius: 50px;
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+}
+
+.chain-duration {
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 50px;
+  font-family: 'Space Mono', monospace;
+}
+
+@media (max-width: 600px) {
+  .video-chain-indicator {
+    top: 60px;
+    right: 12px;
+  }
+  
+  .chain-progress {
+    font-size: 0.7rem;
+    padding: 6px 12px;
+  }
+  
+  .chain-duration {
+    font-size: 0.6rem;
+  }
 }
 
 /* Model Badge on Image */
@@ -2203,6 +2346,12 @@ body::after {
   background: rgba(0, 0, 0, 0.2);
 }
 
+.lightbox-actions-bar.has-video {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
 .action-btn {
   display: flex;
   align-items: center;
@@ -2225,7 +2374,8 @@ body::after {
   font-size: 1.1rem;
 }
 
-.action-btn.create-video {
+.action-btn.create-video,
+.action-btn.extend-video {
   background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
   color: #fff;
   box-shadow: 
@@ -2233,15 +2383,61 @@ body::after {
     inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 
-.action-btn.create-video:hover {
+.action-btn.extend-video {
+  background: linear-gradient(135deg, var(--accent-tertiary), var(--accent-cyan));
+  box-shadow: 
+    0 6px 25px rgba(139, 92, 246, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.action-btn.create-video:hover,
+.action-btn.extend-video:hover {
   transform: translateY(-4px) scale(1.02);
   box-shadow: 
     0 12px 40px rgba(255, 77, 109, 0.6),
     0 0 0 3px rgba(255, 77, 109, 0.2);
 }
 
-.action-btn.create-video:active {
+.action-btn.extend-video:hover {
+  box-shadow: 
+    0 12px 40px rgba(139, 92, 246, 0.6),
+    0 0 0 3px rgba(139, 92, 246, 0.2);
+}
+
+.action-btn.create-video:active,
+.action-btn.extend-video:active {
   transform: translateY(-2px) scale(1.01);
+}
+
+.action-btn.extend-video:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.action-btn.back-btn-light {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  flex: 0;
+  padding: 16px 20px;
+}
+
+.action-btn.back-btn-light:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.action-btn.delete-video {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.action-btn.delete-video:hover {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 8px 25px rgba(239, 68, 68, 0.4);
 }
 
 .action-btn.download {
@@ -2912,6 +3108,26 @@ body::after {
     }
   }
   
+  /* Delete modal - centered on mobile too */
+  .delete-modal-overlay {
+    align-items: center;
+    padding: 20px;
+  }
+  
+  .delete-modal {
+    max-width: 320px;
+    padding: 28px 24px;
+    border-radius: 20px;
+  }
+  
+  .delete-modal-icon {
+    font-size: 2.5rem;
+  }
+  
+  .delete-modal h3 {
+    font-size: 1.2rem;
+  }
+  
   .modal-header {
     padding: 20px;
     position: sticky;
@@ -2990,27 +3206,89 @@ body::after {
   
   .lightbox-sidebar {
     width: 100%;
-    flex: 1;
+    flex: 0 0 auto;
     border-radius: 24px 24px 0 0;
-    max-height: 45vh;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* Hide header and voting on mobile when video selected */
+  .lightbox-sidebar-header {
+    display: none !important;
+  }
+  
+  .video-vote-section {
+    display: none !important;
   }
   
   .lightbox-sidebar-header {
-    padding: 16px 20px;
+    padding: 14px 16px;
   }
   
   .lightbox-sidebar-header h3 {
-    font-size: 1rem;
+    font-size: 0.95rem;
+  }
+  
+  .video-badge {
+    font-size: 0.7rem;
+    padding: 3px 8px;
   }
   
   .lightbox-videos-grid {
     padding: 12px;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
+    padding-bottom: 8px;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 8px;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    flex: 0 0 auto;
   }
   
   .video-card {
-    border-radius: 12px;
+    border-radius: 10px;
+    flex: 0 0 70px;
+    min-width: 70px;
+    scroll-snap-align: start;
+  }
+  
+  .video-card.active {
+    box-shadow: 0 0 0 2px var(--accent-primary);
+  }
+  
+  .video-card img, .video-card video {
+    height: 70px;
+    object-fit: cover;
+    border-radius: 10px;
+  }
+  
+  .video-card-overlay {
+    display: none;
+  }
+  
+  .video-score-badge {
+    display: none;
+  }
+  
+  .video-favorite-badge {
+    top: 4px;
+    right: 4px;
+    font-size: 0.7rem;
+  }
+  
+  .no-videos-state {
+    flex: 1;
+    min-width: 100%;
+    padding: 16px;
+    font-size: 0.85rem;
+  }
+  
+  .no-videos-icon {
+    font-size: 1.5rem;
   }
   
   .video-card .play-icon {
@@ -3022,15 +3300,44 @@ body::after {
   .lightbox-actions-bar {
     padding: 12px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    flex-direction: row;
+    gap: 8px;
+    border-top: none;
+    background: transparent;
+  }
+  
+  .lightbox-actions-bar.has-video {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
     gap: 8px;
   }
   
   .action-btn {
-    flex: 1;
-    padding: 12px 16px;
-    font-size: 0.85rem;
+    padding: 12px 10px;
+    font-size: 0.75rem;
     border-radius: 12px;
+    justify-content: center;
+    font-weight: 600;
+    flex-direction: column;
+    gap: 4px;
+  }
+  
+  .action-btn span {
+    font-size: 1.2rem;
+  }
+  
+  /* All buttons same size in row - icon only */
+  .lightbox-actions-bar.has-video .action-btn {
+    font-size: 0;
+    padding: 14px;
+  }
+  
+  .lightbox-actions-bar.has-video .action-btn span {
+    font-size: 1.4rem;
+  }
+  
+  .lightbox-actions-bar.has-video .action-btn.extend-video {
+    background: linear-gradient(135deg, #a855f7, #7c3aed);
+    border: none;
   }
   
   .lightbox-back {

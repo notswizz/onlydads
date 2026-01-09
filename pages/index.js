@@ -105,6 +105,8 @@ export default function Home() {
   const [videoFrames, setVideoFrames] = useState(81); // 81 frames = ~5 seconds at 16fps
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [videoModalSource, setVideoModalSource] = useState(null); // gallery item for video
+  const [extendingVideo, setExtendingVideo] = useState(false); // track if we're extending a video
+  const [deleteModal, setDeleteModal] = useState({ show: false, item: null, type: null }); // delete confirmation modal
   
   // Jobs queues (background processing)
   const [imageJobs, setImageJobs] = useState([]);
@@ -117,6 +119,8 @@ export default function Home() {
   const [lightboxVideos, setLightboxVideos] = useState([]);
   const [lightboxVideosLoading, setLightboxVideosLoading] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null); // Currently playing video in lightbox
+  const [currentChainIndex, setCurrentChainIndex] = useState(0); // For video chains
+  const videoRef = useRef(null); // Ref for the video element
   
   // Model search
   const [modelSearch, setModelSearch] = useState('');
@@ -499,10 +503,46 @@ export default function Home() {
   
   const selectLightboxVideo = (video) => {
     setSelectedVideo(video);
+    setCurrentChainIndex(0); // Start from first video in chain
   };
   
   const backToImage = () => {
     setSelectedVideo(null);
+    setCurrentChainIndex(0);
+  };
+
+  // Get current video URL (handles chains)
+  const getCurrentVideoUrl = () => {
+    if (!selectedVideo) return null;
+    if (selectedVideo.videoChain && selectedVideo.videoChain.length > 0) {
+      return selectedVideo.videoChain[currentChainIndex];
+    }
+    return selectedVideo.generatedImage;
+  };
+
+  // Handle video ended - play next in chain or loop
+  const handleVideoEnded = () => {
+    if (selectedVideo?.videoChain && selectedVideo.videoChain.length > 1) {
+      const nextIndex = currentChainIndex + 1;
+      if (nextIndex < selectedVideo.videoChain.length) {
+        setCurrentChainIndex(nextIndex);
+      } else {
+        // Loop back to start
+        setCurrentChainIndex(0);
+      }
+    }
+  };
+
+  // Get chain info for display
+  const getChainInfo = () => {
+    if (!selectedVideo?.videoChain || selectedVideo.videoChain.length <= 1) {
+      return null;
+    }
+    return {
+      current: currentChainIndex + 1,
+      total: selectedVideo.videoChain.length,
+      duration: selectedVideo.videoChain.length * 5, // Approximate ~5s each
+    };
   };
 
   // Filter models by search
@@ -738,6 +778,7 @@ export default function Home() {
     if (!videoPrompt.trim()) return;
     if (!videoModalSource) return;
     
+    const isExtension = videoModalSource._isExtension === true;
     const jobId = Date.now().toString();
     const frames = videoFrames;
     const newJob = {
@@ -745,10 +786,11 @@ export default function Home() {
       sourceItem: videoModalSource,
       prompt: videoPrompt,
       frames: frames,
-      status: 'processing', // 'processing' | 'completed' | 'failed'
+      status: 'processing', // 'processing' | 'stitching' | 'completed' | 'failed'
       result: null,
       error: null,
       createdAt: new Date(),
+      isExtension,
     };
     
     // Add job to queue
@@ -758,13 +800,178 @@ export default function Home() {
     setVideoModalSource(null);
     
     // Process in background (don't await)
-    processVideoJob(jobId, newJob.sourceItem, newJob.prompt, frames);
+    if (isExtension) {
+      processExtendVideoJob(jobId, newJob.sourceItem, newJob.prompt, frames);
+    } else {
+      processVideoJob(jobId, newJob.sourceItem, newJob.prompt, frames);
+    }
   };
 
   // Clear completed/failed jobs
   const clearCompletedJobs = () => {
     setImageJobs(prev => prev.filter(job => job.status === 'processing'));
     setVideoJobs(prev => prev.filter(job => job.status === 'processing'));
+  };
+
+  // Extract last frame from video and return as base64
+  const extractLastFrame = async (videoUrl) => {
+    // Use server-side proxy to bypass CORS
+    try {
+      const proxyRes = await fetch('/api/extract-frame', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl }),
+      });
+      
+      const proxyData = await proxyRes.json();
+      if (!proxyData.success) {
+        throw new Error(proxyData.error || 'Failed to fetch video');
+      }
+      
+      // Now extract frame from the data URL (no CORS issues)
+      return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        
+        video.onloadedmetadata = () => {
+          // Seek to near the end (last 0.1 seconds)
+          video.currentTime = Math.max(0, video.duration - 0.1);
+        };
+        
+        video.onseeked = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth || 480;
+            canvas.height = video.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const base64 = canvas.toDataURL('image/jpeg', 0.95);
+            resolve(base64);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        
+        video.onerror = () => {
+          reject(new Error('Failed to process video'));
+        };
+        
+        video.src = proxyData.videoDataUrl;
+        video.load();
+      });
+    } catch (err) {
+      console.error('Frame extraction failed:', err);
+      throw new Error('Could not extract frame from video.');
+    }
+  };
+
+  // Extend a video by using its last frame
+  const handleExtendVideo = async (video) => {
+    if (extendingVideo) return;
+    
+    setExtendingVideo(true);
+    try {
+      // Extract last frame
+      const lastFrame = await extractLastFrame(video.generatedImage);
+      
+      // Create a synthetic source item using the last frame
+      // Mark it as an extension with the original video URL
+      const extendSource = {
+        ...video,
+        generatedImage: lastFrame,
+        _id: video._id,
+        model: video.model,
+        originalImage: video.originalImage,
+        // Special flag to indicate this is an extension
+        _isExtension: true,
+        _originalVideoUrl: video.generatedImage,
+        _originalVideoId: video._id,
+      };
+      
+      // Open video modal with the last frame as source
+      setVideoModalSource(extendSource);
+      setVideoPrompt(video.prompt || 'continue the motion smoothly');
+      setVideoFrames(81);
+      setShowVideoModal(true);
+    } catch (err) {
+      console.error('Failed to extract last frame:', err);
+      alert('Failed to extract last frame from video. Try a different video.');
+    } finally {
+      setExtendingVideo(false);
+    }
+  };
+
+  // Process video extension - generate new segment and chain to original
+  const processExtendVideoJob = async (jobId, sourceItem, prompt, numFrames = 81) => {
+    try {
+      // Generate the extension video segment
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          referenceImages: [sourceItem.generatedImage],
+          prompt: prompt,
+          mode: 'video',
+          numFrames: numFrames,
+        }),
+      });
+      const data = await res.json();
+      
+      if (data.needCredits) {
+        setShowProfileModal(true);
+        throw new Error(data.error);
+      }
+      
+      fetchCredits();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Video generation failed');
+      }
+
+      // Build the video chain - original video(s) + new segment
+      const existingChain = sourceItem.videoChain || [sourceItem._originalVideoUrl];
+      const videoChain = [...existingChain, data.output];
+
+      // Save with the video chain
+      const saveRes = await fetch('/api/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalImage: sourceItem.originalImage,
+          generatedImage: data.output, // Latest segment as thumbnail
+          prompt: prompt,
+          dadType: 'OnlyDad',
+          model: sourceItem.model,
+          type: 'video',
+          sourceImageId: sourceItem.sourceImageId || sourceItem._originalVideoId,
+          videoChain: videoChain, // Array of all video URLs in sequence
+        }),
+      });
+      const saveData = await saveRes.json();
+      
+      if (saveData.success) {
+        setVideoJobs(prev => prev.map(job => 
+          job.id === jobId 
+            ? { ...job, status: 'completed', result: saveData.creation }
+            : job
+        ));
+        
+        // Add to lightbox videos if viewing
+        if (lightboxItem) {
+          setLightboxVideos(prev => [saveData.creation, ...prev]);
+        }
+      } else {
+        throw new Error('Failed to save extended video');
+      }
+    } catch (err) {
+      console.error('Extend video job failed:', err);
+      setVideoJobs(prev => prev.map(job => 
+        job.id === jobId 
+          ? { ...job, status: 'failed', error: err.message }
+          : job
+      ));
+    }
   };
 
   // Handle delete
@@ -774,7 +981,7 @@ export default function Home() {
       return;
     }
     
-    if (!confirm('Delete this item?')) return;
+    // Confirmation is now handled by the delete modal
     
     try {
       const res = await fetch(`/api/delete?id=${creationId}`, {
@@ -797,6 +1004,24 @@ export default function Home() {
       console.error('Delete failed:', err);
       alert('Failed to delete');
     }
+  };
+  
+  // Confirm deletion from modal
+  const confirmDelete = async () => {
+    if (!deleteModal.item) return;
+    
+    const itemId = deleteModal.item._id;
+    const isVideo = deleteModal.type === 'video';
+    
+    await handleDelete(itemId);
+    
+    // If deleting a video, also update lightbox state
+    if (isVideo) {
+      setLightboxVideos(prev => prev.filter(v => v._id !== itemId));
+      setSelectedVideo(null);
+    }
+    
+    setDeleteModal({ show: false, item: null, type: null });
   };
 
   // Handle voting
@@ -1399,12 +1624,23 @@ export default function Home() {
                     ← Back
                   </button>
                   <video 
-                    src={selectedVideo.generatedImage} 
+                    ref={videoRef}
+                    key={getCurrentVideoUrl()} // Force re-mount when URL changes
+                    src={getCurrentVideoUrl()} 
                     className="lightbox-media"
                     controls 
-                    autoPlay 
-                    loop
+                    autoPlay
+                    onEnded={handleVideoEnded}
                   />
+                  {/* Chain indicator */}
+                  {getChainInfo() && (
+                    <div className="video-chain-indicator">
+                      <span className="chain-progress">
+                        Part {getChainInfo().current} of {getChainInfo().total}
+                      </span>
+                      <span className="chain-duration">~{getChainInfo().duration}s total</span>
+                    </div>
+                  )}
                 </>
               ) : (
                 <img 
@@ -1522,7 +1758,7 @@ export default function Home() {
               </div>
               
               {/* Action buttons */}
-              <div className="lightbox-actions-bar">
+              <div className={`lightbox-actions-bar ${selectedVideo ? 'has-video' : ''}`}>
                 {!selectedVideo ? (
                   <button 
                     className="action-btn create-video"
@@ -1531,12 +1767,27 @@ export default function Home() {
                     <span>✦</span> Create Video
                   </button>
                 ) : (
-                  <button 
-                    className="action-btn create-video"
-                    onClick={backToImage}
-                  >
-                    <span>←</span> Back to Image
-                  </button>
+                  <>
+                    <button 
+                      className="action-btn extend-video"
+                      onClick={() => handleExtendVideo(selectedVideo)}
+                      disabled={extendingVideo}
+                    >
+                      <span>⟳</span> {extendingVideo ? 'Loading...' : 'Extend'}
+                    </button>
+                    <button 
+                      className="action-btn delete-video"
+                      onClick={() => setDeleteModal({ show: true, item: selectedVideo, type: 'video' })}
+                    >
+                      <span>🗑</span> Delete
+                    </button>
+                    <button 
+                      className="action-btn back-btn-light"
+                      onClick={backToImage}
+                    >
+                      <span>←</span> Back
+                    </button>
+                  </>
                 )}
                 <a 
                   className="action-btn download"
@@ -1685,10 +1936,10 @@ export default function Home() {
                     {job.status === 'processing' && (
                       <>
                         <span className="job-spinner"></span>
-                        Creating video...
+                        {job.isExtension ? 'Extending video...' : 'Creating video...'}
                       </>
                     )}
-                    {job.status === 'completed' && '✓ Video saved'}
+                    {job.status === 'completed' && (job.isExtension ? '✓ Extended!' : '✓ Video saved')}
                     {job.status === 'failed' && '✕ Failed'}
                   </span>
                 </div>
@@ -1820,6 +2071,31 @@ export default function Home() {
                 onClick={() => signOut()}
               >
                 Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal.show && (
+        <div className="modal-overlay delete-modal-overlay" onClick={() => setDeleteModal({ show: false, item: null, type: null })}>
+          <div className="delete-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="delete-modal-icon">🗑</div>
+            <h3>Delete {deleteModal.type === 'video' ? 'Video' : 'Item'}?</h3>
+            <p>This action cannot be undone.</p>
+            <div className="delete-modal-actions">
+              <button 
+                className="delete-modal-cancel"
+                onClick={() => setDeleteModal({ show: false, item: null, type: null })}
+              >
+                Cancel
+              </button>
+              <button 
+                className="delete-modal-confirm"
+                onClick={confirmDelete}
+              >
+                Delete
               </button>
             </div>
           </div>

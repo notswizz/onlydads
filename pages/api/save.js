@@ -66,6 +66,7 @@ export default async function handler(req, res) {
     model,
     type = 'image',
     sourceImageId = null, // For videos: the _id of the image this video was made from
+    videoChain = null, // For extended videos: array of video URLs to play in sequence
   } = req.body;
 
   if (!generatedImage) {
@@ -95,6 +96,8 @@ export default async function handler(req, res) {
       voteScore: 0,
       // For videos: link to the source image
       ...(type === 'video' && sourceImageId ? { sourceImageId } : {}),
+      // For extended videos: array of video URLs to play in sequence
+      ...(type === 'video' && videoChain && Array.isArray(videoChain) ? { videoChain } : {}),
       // Store user info
       uploadedBy: {
         id: session.user.id,
