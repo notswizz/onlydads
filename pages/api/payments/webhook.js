@@ -1,8 +1,16 @@
-import { buffer } from 'micro';
 import crypto from 'crypto';
 import clientPromise from '../../../lib/mongodb';
 import { addCredits } from '../../../lib/credits';
 import { ObjectId } from 'mongodb';
+
+// Helper to read raw body
+async function getRawBody(req) {
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
+}
 
 // Disable body parsing, we need raw body for signature verification
 export const config = {
@@ -15,10 +23,14 @@ function verifyWebhookSignature(payload, signature, secret) {
   const hmac = crypto.createHmac('sha256', secret);
   hmac.update(payload);
   const computedSignature = hmac.digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(computedSignature)
-  );
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(computedSignature)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export default async function handler(req, res) {
@@ -29,22 +41,17 @@ export default async function handler(req, res) {
   const webhookSecret = process.env.COINBASE_COMMERCE_WEBHOOK_SECRET;
   
   try {
-    const rawBody = await buffer(req);
+    const rawBody = await getRawBody(req);
     const signature = req.headers['x-cc-webhook-signature'];
 
     // Verify signature if webhook secret is configured
     if (webhookSecret && signature) {
-      try {
-        const isValid = verifyWebhookSignature(rawBody.toString(), signature, webhookSecret);
-        if (!isValid) {
-          console.error('Invalid webhook signature');
-          return res.status(401).json({ error: 'Invalid signature' });
-        }
-      } catch (sigErr) {
-        console.error('Signature verification error:', sigErr);
-        // Continue anyway in development
+      const isValid = verifyWebhookSignature(rawBody.toString(), signature, webhookSecret);
+      if (!isValid) {
+        console.error('Invalid webhook signature');
+        // In production, reject invalid signatures
         if (process.env.NODE_ENV === 'production') {
-          return res.status(401).json({ error: 'Signature verification failed' });
+          return res.status(401).json({ error: 'Invalid signature' });
         }
       }
     }
