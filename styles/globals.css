@@ -2567,6 +2567,7 @@ body::after {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   transition: all 0.3s var(--ease-out-expo);
+  cursor: pointer;
 }
 
 .favorite-video-card:hover {
@@ -2622,6 +2623,22 @@ body::after {
 .favorite-remove-btn:hover {
   background: rgba(255, 77, 109, 0.3);
   transform: scale(1.1);
+}
+
+.chain-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+  pointer-events: none;
 }
 
 .favorite-video {

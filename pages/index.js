@@ -67,6 +67,124 @@ const buildPrompt = (dadCount, pose, shirt, race) => {
   return `add ${count} ${shirtText}, ${poseText}. maintain the model's look exactly as in the original photo.`;
 };
 
+// Component for favorite video cards with chain playback
+const FavoriteVideoCard = ({ video, onUnfavorite, onVote, onModelClick, onClick }) => {
+  const videoRef = useRef(null);
+  const [chainIndex, setChainIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  
+  // Get all video URLs in order (chain or single video)
+  const getVideoUrls = () => {
+    if (video.videoChain && video.videoChain.length > 0) {
+      return video.videoChain;
+    }
+    return [video.generatedImage];
+  };
+  
+  const videoUrls = getVideoUrls();
+  const currentUrl = videoUrls[chainIndex];
+  const hasChain = videoUrls.length > 1;
+  
+  const handlePlay = () => {
+    setIsPlaying(true);
+    setChainIndex(0); // Start from beginning
+    if (videoRef.current) {
+      videoRef.current.play();
+    }
+  };
+  
+  const handleStop = () => {
+    setIsPlaying(false);
+    setChainIndex(0);
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
+  };
+  
+  const handleVideoEnded = () => {
+    if (chainIndex < videoUrls.length - 1) {
+      // Play next segment
+      setChainIndex(prev => prev + 1);
+    } else {
+      // Loop back to start
+      setChainIndex(0);
+    }
+  };
+  
+  // When chainIndex changes and we're playing, play the new segment
+  useEffect(() => {
+    if (isPlaying && videoRef.current) {
+      videoRef.current.play();
+    }
+  }, [chainIndex, isPlaying]);
+  
+  return (
+    <div className="favorite-video-card" onClick={onClick}>
+      {/* Model badge */}
+      <span className="model-badge" onClick={(e) => { e.stopPropagation(); onModelClick(video.model); }}>
+        {video.model}
+      </span>
+      
+      {/* Chain indicator */}
+      {hasChain && (
+        <span className="chain-badge">
+          {isPlaying ? `${chainIndex + 1}/${videoUrls.length}` : `${videoUrls.length} clips`}
+        </span>
+      )}
+      
+      {/* Unfavorite button */}
+      <button 
+        className="favorite-remove-btn"
+        onClick={(e) => { e.stopPropagation(); onUnfavorite(video._id); }}
+        title="Remove from favorites"
+      >
+        ❤️
+      </button>
+      
+      <video 
+        ref={videoRef}
+        src={currentUrl}
+        muted 
+        playsInline
+        className="favorite-video"
+        onMouseEnter={handlePlay}
+        onMouseLeave={handleStop}
+        onTouchStart={(e) => { 
+          if (!isPlaying) handlePlay();
+          else handleStop();
+        }}
+        onEnded={handleVideoEnded}
+      />
+      
+      <div className="favorite-video-overlay">
+        <span className="play-hint">▶</span>
+      </div>
+      
+      {/* Vote controls */}
+      <div className="favorite-video-footer">
+        <div className="vote-controls compact">
+          <button 
+            className="vote-btn upvote"
+            onClick={(e) => { e.stopPropagation(); onVote(video._id, 'up'); }}
+          >
+            ▲
+          </button>
+          <span className={`vote-count ${video.voteScore > 0 ? 'positive' : video.voteScore < 0 ? 'negative' : ''}`}>
+            {video.voteScore || 0}
+          </span>
+          <button 
+            className="vote-btn downvote"
+            onClick={(e) => { e.stopPropagation(); onVote(video._id, 'down'); }}
+          >
+            ▼
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function Home() {
   const { data: session, status } = useSession();
   
@@ -509,6 +627,14 @@ export default function Home() {
   const backToImage = () => {
     setSelectedVideo(null);
     setCurrentChainIndex(0);
+  };
+  
+  // Open lightbox directly for a video (from favorites)
+  const openLightboxForVideo = (video) => {
+    setLightboxItem(video);
+    setSelectedVideo(video);
+    setCurrentChainIndex(0);
+    setLightboxVideos([video]);
   };
 
   // Get current video URL (handles chains)
@@ -1225,60 +1351,14 @@ export default function Home() {
               /* Favorites Video Gallery */
               <div className="favorites-video-grid">
                 {favorites.map((video) => (
-                  <div key={video._id} className="favorite-video-card">
-                    {/* Model badge */}
-                    <span className="model-badge" onClick={(e) => { e.stopPropagation(); openModelDetail({ name: video.model, count: 0 }); }}>
-                      {video.model}
-                    </span>
-                    
-                    {/* Unfavorite button */}
-                    <button 
-                      className="favorite-remove-btn"
-                      onClick={(e) => { e.stopPropagation(); toggleFavorite(video._id); }}
-                      title="Remove from favorites"
-                    >
-                      ❤️
-                    </button>
-                    
-                    <video 
-                      src={video.generatedImage} 
-                      muted 
-                      loop
-                      playsInline
-                      className="favorite-video"
-                      onMouseEnter={(e) => e.target.play()}
-                      onMouseLeave={(e) => { e.target.pause(); e.target.currentTime = 0; }}
-                      onTouchStart={(e) => { 
-                        if (e.target.paused) e.target.play(); 
-                        else { e.target.pause(); e.target.currentTime = 0; }
-                      }}
-                    />
-                    
-                    <div className="favorite-video-overlay">
-                      <span className="play-hint">▶</span>
-                    </div>
-                    
-                    {/* Vote controls */}
-                    <div className="favorite-video-footer">
-                      <div className="vote-controls compact">
-                        <button 
-                          className="vote-btn upvote"
-                          onClick={(e) => { e.stopPropagation(); handleVote(video._id, 'up'); }}
-                        >
-                          ▲
-                        </button>
-                        <span className={`vote-count ${video.voteScore > 0 ? 'positive' : video.voteScore < 0 ? 'negative' : ''}`}>
-                          {video.voteScore || 0}
-                        </span>
-                        <button 
-                          className="vote-btn downvote"
-                          onClick={(e) => { e.stopPropagation(); handleVote(video._id, 'down'); }}
-                        >
-                          ▼
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <FavoriteVideoCard
+                    key={video._id}
+                    video={video}
+                    onUnfavorite={toggleFavorite}
+                    onVote={handleVote}
+                    onModelClick={(model) => openModelDetail({ name: model, count: 0 })}
+                    onClick={() => openLightboxForVideo(video)}
+                  />
                 ))}
               </div>
             ) : (
